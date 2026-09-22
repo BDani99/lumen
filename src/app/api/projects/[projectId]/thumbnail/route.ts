@@ -8,6 +8,8 @@ import {
   requireUserApi,
 } from "@/lib/auth";
 import { isR2Configured, thumbnailImageKey, uploadImageToR2 } from "@/lib/r2";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 export async function POST(
   request: Request,
@@ -23,6 +25,14 @@ export async function POST(
     if (!(await assertProjectOwned(projectId, auth.user.id))) {
       return forbidden("Project not found or not owned");
     }
+
+    const rateLimit = await checkRateLimit({
+      userId: auth.user.id,
+      routeKey: "thumbnail:create",
+      limit: 20,
+      windowSeconds: 3600,
+    });
+    if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds);
 
     // 1. Fetch project and channel settings
     const { data: project, error: projectError } = await supabaseAdmin
@@ -75,7 +85,7 @@ export async function POST(
           const match = err.message.match(/in (\d+)s/);
           if (match) waitTime = (parseInt(match[1]) + 2) * 1000;
         }
-        console.log(`[API] Waiting ${waitTime/1000}s before retry...`);
+        logger.debug(`[API] Waiting ${waitTime/1000}s before retry...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
     }

@@ -21,6 +21,7 @@ import {
   normalizeVideoOptions,
 } from "@/lib/video-mode";
 import { getSceneMotionClips, type MotionClipsByScene } from "@/lib/motion-clips";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 /** Single video-gen poll cycle can take a few minutes — give it room. */
 export const maxDuration = 300;
@@ -47,6 +48,15 @@ export async function POST(req: Request) {
   try {
     const auth = await requireUserApi();
     if (auth.error) return auth.error;
+
+    // Same cost class as scene image regen (POST /api/scenes) — shares its bucket.
+    const rateLimit = await checkRateLimit({
+      userId: auth.user.id,
+      routeKey: "scenes:image",
+      limit: 60,
+      windowSeconds: 3600,
+    });
+    if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds);
 
     const { sceneId, clipIndex, narration } = await req.json();
     if (!sceneId || typeof clipIndex !== "number" || !String(narration || "").trim()) {

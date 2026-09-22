@@ -8,6 +8,20 @@ import {
   requireUserApi,
 } from "@/lib/auth";
 import { isR2Configured, sceneImageKey, uploadImageToR2 } from "@/lib/r2";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+
+/** Columns the client is allowed to write via PATCH /api/scenes — everything
+ * else on video_scenes (project_id, scene_order, timestamps, ...) must not be
+ * settable by a client-supplied `update` object. */
+const UPDATABLE_SCENE_FIELDS = ["image_url", "video_url", "image_prompt", "effect"] as const;
+
+function pickAllowedSceneUpdate(update: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of UPDATABLE_SCENE_FIELDS) {
+    if (key in update) out[key] = update[key];
+  }
+  return out;
+}
 
 async function requireSceneOwned(sceneId: string, userId: string) {
   const { data: scene } = await supabaseAdmin
@@ -24,6 +38,14 @@ export async function POST(req: Request) {
   try {
     const auth = await requireUserApi();
     if (auth.error) return auth.error;
+
+    const rateLimit = await checkRateLimit({
+      userId: auth.user.id,
+      routeKey: "scenes:image",
+      limit: 60,
+      windowSeconds: 3600,
+    });
+    if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds);
 
     const { sceneId, prompt } = await req.json();
 
@@ -161,9 +183,14 @@ export async function PATCH(req: Request) {
       return forbidden("Scene not found or not owned");
     }
 
+    const safeUpdate = pickAllowedSceneUpdate(update);
+    if (Object.keys(safeUpdate).length === 0) {
+      return NextResponse.json({ error: "No updatable fields in update data" }, { status: 400 });
+    }
+
     const { data: updatedScene, error } = await supabaseAdmin
       .from("video_scenes")
-      .update(update)
+      .update(safeUpdate)
       .eq("id", sceneId)
       .select()
       .single();

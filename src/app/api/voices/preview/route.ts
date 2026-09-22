@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { AI33Client, ai33UserMessage, clampTtsSpeed, type AI33VoiceProvider } from "@/lib/ai33";
 import { requireUserApi } from "@/lib/auth";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 export const maxDuration = 120;
 
@@ -48,6 +49,14 @@ export async function POST(req: Request) {
     if (!process.env.AI33_API_KEY) {
       return NextResponse.json({ error: "AI33_API_KEY is not configured" }, { status: 500 });
     }
+
+    const rateLimit = await checkRateLimit({
+      userId: auth.user.id,
+      routeKey: "voices:preview",
+      limit: 30,
+      windowSeconds: 3600,
+    });
+    if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds);
 
     const body = await req.json();
     const text = typeof body.text === "string" ? body.text.trim() : "";

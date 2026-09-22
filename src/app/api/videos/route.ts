@@ -9,6 +9,7 @@ import {
 } from "@/lib/auth";
 import { normalizeVideoOptions } from "@/lib/video-mode";
 import { isKnownTextModel } from "@/lib/cost-estimate";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 const MAX_SCRIPT_CHARS = 200_000;
 
@@ -17,6 +18,14 @@ export async function POST(req: Request) {
     const auth = await requireUserApi();
     if (auth.error) return auth.error;
     const user = auth.user;
+
+    const rateLimit = await checkRateLimit({
+      userId: user.id,
+      routeKey: "videos:create",
+      limit: 10,
+      windowSeconds: 3600,
+    });
+    if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds);
 
     const body = await req.json();
     const {

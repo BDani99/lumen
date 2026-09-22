@@ -8,6 +8,7 @@ import {
 import { cleanupOldR2Videos } from "@/lib/inngest/r2-cleanup";
 import { regenerateMediaWorkflow } from "@/lib/inngest/regenerate-media";
 import { proGenerateWorkflow } from "@/lib/inngest/pro/generate";
+import { cleanupRateLimitHits } from "@/lib/inngest/rate-limit-cleanup";
 
 /** Vercel serverless limit (seconds). Keep checkpointing.maxRuntime below this. */
 export const maxDuration = 300;
@@ -21,5 +22,6 @@ export const { GET, POST, PUT } = serve({
     cleanupOldR2Videos,
     regenerateMediaWorkflow,
     proGenerateWorkflow,
+    cleanupRateLimitHits,
   ],
 });

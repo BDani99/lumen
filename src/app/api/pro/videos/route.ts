@@ -4,6 +4,7 @@ import { inngest } from "@/lib/inngest/client";
 import { appendGenerationLog } from "@/lib/generation-log";
 import { assertChannelOwned, forbidden, requireUserApi } from "@/lib/auth";
 import { normalizeProSettings } from "@/lib/pro/presets";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 const MAX_SCRIPT_CHARS = 200_000;
 
@@ -15,6 +16,16 @@ export async function POST(req: Request) {
   try {
     const auth = await requireUserApi();
     if (auth.error) return auth.error;
+
+    // Same bucket as the classic /api/videos — both start a full paid
+    // generation pipeline, so the two pipelines share one hourly cap.
+    const rateLimit = await checkRateLimit({
+      userId: auth.user.id,
+      routeKey: "videos:create",
+      limit: 10,
+      windowSeconds: 3600,
+    });
+    if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds);
 
     const body = await req.json();
     const { title, channelId, durationMinutes, customScript, proSettings } = body;
