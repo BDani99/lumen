@@ -44,7 +44,16 @@ next-env.d.ts
 
 .mcp.json
 .claude/settings.local.json
+.cursor/
+
+# vendored AI-agent skills — regenerable from skills-lock.json (npx skills add),
+# not app source, so it stays out of version control like node_modules does
+/.agents/skills/
 
 # local debug/test artifacts
 /response.json
 /test_mcp/
+/scratch/
+/test_openai.js
+/test_sharp.js
+/test_upload.js
