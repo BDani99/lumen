@@ -50,7 +50,8 @@ export async function POST(req: Request) {
       textModel,
     } = body;
 
-    if (!title || !channelId) {
+    const trimmedTitle = typeof title === "string" ? title.trim() : "";
+    if (!trimmedTitle || !channelId) {
       return NextResponse.json({ error: "Missing title or channelId" }, { status: 400 });
     }
 
@@ -105,7 +106,7 @@ export async function POST(req: Request) {
     };
 
     const insertPayload: Record<string, unknown> = {
-      title,
+      title: trimmedTitle,
       channel_id: channelId,
       user_id: user.id,
       status: "Draft",
