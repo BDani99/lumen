@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { AI33Client, ai33UserMessage } from "@/lib/ai33";
-import { requireUserApi } from "@/lib/auth";
+import { assertDictionaryOwned, forbidden, requireUserApi } from "@/lib/auth";
+import { supabaseAdmin } from "@/lib/supabase";
 
 export async function PUT(
   req: Request,
@@ -15,13 +16,21 @@ export async function PUT(
     }
 
     const { id } = await params;
+    const dictionaryId = Number(id);
+    if (!Number.isFinite(dictionaryId)) {
+      return NextResponse.json({ error: "Érvénytelen szótár-azonosító." }, { status: 400 });
+    }
+    if (!(await assertDictionaryOwned(dictionaryId, auth.user.id))) {
+      return forbidden("Dictionary not found or not owned");
+    }
+
     const body = await req.json().catch(() => ({}));
     const input: { name?: string; rules?: unknown } = {};
     if (typeof body.name === "string" && body.name.trim()) input.name = body.name.trim();
     if (Array.isArray(body.rules)) input.rules = body.rules;
 
     const ai33 = new AI33Client();
-    const dictionary = await ai33.updateDictionary(id, input as any);
+    const dictionary = await ai33.updateDictionary(dictionaryId, input as any);
     return NextResponse.json({ dictionary });
   } catch (error: any) {
     console.error("[api/dictionaries/[id] PUT]", error);
@@ -42,8 +51,17 @@ export async function DELETE(
     }
 
     const { id } = await params;
+    const dictionaryId = Number(id);
+    if (!Number.isFinite(dictionaryId)) {
+      return NextResponse.json({ error: "Érvénytelen szótár-azonosító." }, { status: 400 });
+    }
+    if (!(await assertDictionaryOwned(dictionaryId, auth.user.id))) {
+      return forbidden("Dictionary not found or not owned");
+    }
+
     const ai33 = new AI33Client();
-    await ai33.deleteDictionary(id);
+    await ai33.deleteDictionary(dictionaryId);
+    await supabaseAdmin.from("dictionary_owners").delete().eq("dictionary_id", dictionaryId);
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("[api/dictionaries/[id] DELETE]", error);

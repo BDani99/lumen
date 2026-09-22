@@ -73,6 +73,20 @@ export async function assertNamePoolPresetOwned(
   return Boolean(data);
 }
 
+/** AI33 dictionaries have no user field of their own — ownership is tracked in dictionary_owners. */
+export async function assertDictionaryOwned(
+  dictionaryId: number,
+  userId: string
+): Promise<boolean> {
+  const { data } = await supabaseAdmin
+    .from("dictionary_owners")
+    .select("dictionary_id")
+    .eq("dictionary_id", dictionaryId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  return Boolean(data);
+}
+
 export function forbidden(message = "Forbidden") {
   return NextResponse.json({ error: message }, { status: 403 });
 }
