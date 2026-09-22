@@ -1,0 +1,1 @@
+ALTER TABLE video_projects ADD COLUMN IF NOT EXISTS exported_at TIMESTAMPTZ;
