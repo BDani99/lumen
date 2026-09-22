@@ -22,9 +22,10 @@ export function Button({
     <button
       type={type}
       className={cn(
-        "inline-flex cursor-pointer items-center justify-center gap-2 rounded-[var(--radius)] px-4 py-2.5 text-sm transition-colors",
+        "inline-flex cursor-pointer items-center justify-center gap-2 rounded-[var(--radius)] px-4 py-2.5 text-sm transition-[color,background-color,border-color,transform] duration-100",
+        "active:scale-[0.97]",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
-        "disabled:cursor-not-allowed disabled:opacity-50",
+        "disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100",
         variants[variant],
         className
       )}

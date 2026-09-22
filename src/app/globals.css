@@ -133,3 +133,10 @@ body::after {
 .animate-lumen-pulse {
   animation: lumen-pulse 1.6s ease-in-out infinite;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-lumen-in,
+  .animate-lumen-pulse {
+    animation: none;
+  }
+}
