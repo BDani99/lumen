@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/utils/supabase/client";
 import Link from "next/link";
 import VoiceSettingsPanel from "./VoiceSettingsPanel";
 import { Button, Input, Label } from "@/components/ui";
@@ -18,13 +17,11 @@ import { MasterPromptSection } from "./MasterPromptSection";
 
 export default function ChannelForm({
   initialChannel,
-  userId,
 }: {
   initialChannel: any;
   userId: string;
 }) {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const isNew = !initialChannel;
 
   const [loading, setLoading] = useState(false);
@@ -53,16 +50,20 @@ export default function ChannelForm({
       videoGenerationDefaults: videoDefaults.buildVideoGenerationDefaults(),
     });
 
-    if (isNew) {
-      const { error } = await supabase.from("channels").insert([{ ...channelData, user_id: userId }]);
-      if (!error) router.push("/channels");
-      else setFormError(error.message);
-    } else {
-      const { error } = await supabase.from("channels").update(channelData).eq("id", initialChannel.id);
-      if (!error) router.push("/channels");
-      else setFormError(error.message);
+    try {
+      const res = await fetch(isNew ? "/api/channels" : `/api/channels/${initialChannel.id}`, {
+        method: isNew ? "POST" : "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(channelData),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Mentés sikertelen.");
+      router.push("/channels");
+    } catch (e: any) {
+      setFormError(e.message || "Mentés sikertelen.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
