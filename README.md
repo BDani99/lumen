@@ -158,7 +158,7 @@ A videógenerálás (script / hang / képek) **csak akkor fut**, ha mindkettő m
 | `npm run lint` | ESLint. |
 | `npx tsc --noEmit` | TypeScript típusellenőrzés build nélkül. |
 
-A `scripts/` mappa egyszeri, kézi karbantartó parancsfájlokat tartalmaz (R2-migráció/purge, megakadt projekt folytatása, szótár-tulajdonos backfill) — mindegyik `npx tsx --env-file=.env.local scripts/<fájl>.ts` formában futtatható, dry-run alapértelmezéssel (`--confirm` nélkül csak kiírja, mit tenne).
+A `scripts/` mappa egyszeri, kézi karbantartó parancsfájlokat tartalmaz (R2-migráció/purge, megakadt projekt folytatása, szótár-tulajdonos backfill, első felhasználó létrehozása) — a `.ts` fájlok `npx tsx --env-file=.env.local scripts/<fájl>.ts` formában futtathatók, dry-run alapértelmezéssel (`--confirm` nélkül csak kiírják, mit tennének). A `create-user.mjs` egy Supabase-felhasználót hoz létre email-megerősítés nélkül: `node scripts/create-user.mjs <email> <jelszó>`.
 
 ### Windows: `npm run dev` és a Turbopack
 
