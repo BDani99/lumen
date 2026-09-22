@@ -1,0 +1,11 @@
+-- global_settings predates this repo's migration history entirely (no
+-- CREATE TABLE for it exists in any migration file — pure DB drift) and was
+-- an early design for storing provider API keys as plaintext DB columns,
+-- superseded by the current env-var-based key management used everywhere
+-- else in this app. Confirmed via full-codebase grep: zero references from
+-- application code. Confirmed empty (0 rows). It was already locked down to
+-- service-role-only (RLS enabled, no policies — see
+-- 20260805120000_auth_multi_tenant.sql), but a dead table that stores
+-- secrets is still a landmine, so it's dropped rather than kept "safe by
+-- RLS" indefinitely.
+DROP TABLE IF EXISTS public.global_settings;
