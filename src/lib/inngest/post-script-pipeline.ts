@@ -2,6 +2,7 @@ import { openai, openrouter } from "../openai";
 import { supabaseAdmin } from "../supabase";
 import { AI33Client } from "../ai33";
 import { appendGenerationLog } from "../generation-log";
+import { logger } from "../logger";
 import { segmentSrtIntoScenes } from "../services/scene-segmentation";
 import { cropTo16x9 } from "../image-processing";
 import { imageCostForModelOption, voiceCostForChars } from "../cost-estimate";
@@ -94,7 +95,7 @@ export async function runAudioVisualPipeline(params: {
   });
 
   const audioTask = await step.run("start-audio-generation", async () => {
-    console.log(`[GENERATOR] Sending script to AI33 for TTS and SRT...`);
+    logger.debug(`[GENERATOR] Sending script to AI33 for TTS and SRT...`);
     await supabaseAdmin.from("video_projects").update({ status: "Audio_Generation" }).eq("id", projectId);
     const voiceSettings = channel.ai33_voice_settings || { voiceId: "elevenlabs_eleven_multilingual_v2" };
 

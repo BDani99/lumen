@@ -3,6 +3,7 @@ import { supabaseAdmin } from "../supabase";
 import { cropTo16x9 } from "../image-processing";
 import { postProcessVideoBuffer } from "../video-processing";
 import { appendGenerationLog } from "../generation-log";
+import { logger } from "../logger";
 import {
   downloadOpenRouterVideoBytes,
   generateOpenRouterVideo,
@@ -137,7 +138,7 @@ export async function withRetries<T>(
       const wait = rateLimited
         ? parseRetryAfterMs(err, Math.min(MAX_BACKOFF_MS, exponential))
         : Math.min(MAX_BACKOFF_MS, baseWaitMs * attempt);
-      console.log(`[GENERATOR] ${label}: waiting ${wait / 1000}s before retry...`);
+      logger.debug(`[GENERATOR] ${label}: waiting ${wait / 1000}s before retry...`);
       await sleepMs(wait);
     }
   }
@@ -322,7 +323,7 @@ export async function generateOneScene(params: {
           ? qualityParam
           : undefined;
 
-      console.log(
+      logger.debug(
         `[GENERATOR] Requesting ${label} for Scene ${i + 1} using model ${modelName}…`
       );
 
