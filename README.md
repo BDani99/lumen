@@ -1,53 +1,213 @@
-# Lumen (Next.js + Inngest + Supabase)
+# Lumen
 
-## Helyi fejlesztés (2 terminál)
+**AI-alapú YouTube videógeneráló** — egy témából vagy saját forgatókönyvből teljes, elkészült videót épít: szöveg → narráció → jelenetképek/videóklipek → export, csatorna-alapú munkafolyamatban.
 
-1. Másold az env sablont és töltsd ki a kulcsokat:
+Adj meg egy címet és (opcionálisan) egy hosszúságot egy csatornához — Lumen megírja a forgatókönyvet, felolvastatja egy AI hanggal, minden mondathoz/jelenethez legyárt egy képet vagy videóklipet (AI-generálással vagy ingyenes stock médiával), majd exportálható formában (DaVinci Resolve-kompatibilis FCPXML + médiacsomag) adja vissza. Minden lépés valós idejű állapotkövetéssel, hibatűréssel (megszakadt futás folytatható) és előzetes költségbecsléssel fut.
 
+---
+
+## Tartalom
+
+- [Funkciók](#funkciók)
+- [Architektúra](#architektúra--kik-a-szereplők)
+- [Környezeti változók](#környezeti-változók)
+- [Helyi fejlesztés](#helyi-fejlesztés)
+- [Supabase beállítás](#supabase-beállítás)
+- [Deployment (Vercel)](#deployment-vercel--inngest-cloud)
+- [Biztonság](#biztonság)
+
+---
+
+## Funkciók
+
+**Forgatókönyvírás**
+- AI szövegírás (Qwen modellcsalád OpenRouteren keresztül, választható modellel csatornánként), opcionális minőség-ellenőrzési, logikai-ellenőrzési és záró csiszolási (`polish`) lépéssel.
+- Saját forgatókönyv is megadható — ilyenkor a szövegírás lépés kimarad, a pipeline a narrációnál folytatja.
+- Karakter-névkészletek: újrafelhasználható, kategóriánkénti (férfi/női keresztnév, vezetéknév, helyek/címek) névlisták, amikből a generált szöveg konzisztens szereplőneveket választ — csatornánként kiválasztható preset.
+- Kiejtési szótárak: szó/kifejezés-szintű felülbírálás a TTS-hez (pl. tulajdonnevek helyes kiejtése), csatornánként újrahasználható.
+
+**Narráció (TTS)**
+- ElevenLabs, MiniMax, Fish Audio egységes felületen, nyelv/nem/keresés szerint szűrhető hangkönyvtárral és előhallgatással.
+- Beszédsebesség és kiejtési szótár hangonként/csatornánként állítható.
+
+**Képek és videó**
+- Jelenetképek AI-generálással (GPT Image 2, választható minőséggel) vagy mozgó klipek (Wan / Seedance modellek OpenRouteren, szöveg→videó vagy kép→videó stratégiával, felbontás és időtartam szerint konfigurálva).
+- Ingyenes stock média fallback: Pexels, Pixabay, Wikimedia Commons, Internet Archive, Openverse — AI-alapú relevancia-ellenőrzéssel, hogy csak a jelenethez ténylegesen illő találat kerüljön be.
+- Helyszín-bevezető képek: az elbeszélés új helyszínére automatikusan generál egy "establishing shot"-ot, de csak első előfordoláskor — nem ismétli minden visszatérésnél.
+- Automatikus Ken Burns-szerű zoom effekt csatornaszinten állítható erősséggel.
+- Borítókép-generálás (karakterglossary-tudatos prompt-tal), előzményekkel.
+
+**Szerkesztő és export**
+- Élő állapotkövetés (Supabase Realtime) a generálás minden fázisában, hibanaplóval.
+- Egyedi jelenet-szerkesztő: kép/klip újragenerálás, jelenetek felcserélése, effekt-választás, forgatókönyv utólagos szerkesztése és folytatása.
+- DaVinci Resolve-kompatibilis export: FCPXML idővonal + a hozzá tartozó médiafájlok egy letölthető ZIP-ben.
+- **Pro pipeline** (választható, külön mód): többforrású "director cut" — helyszín-tudatos jelenetbontás, AI mozgóklip / AI kép / ingyenes stock média tudatos keverése költség-preset szerint (Takarékos / Kiegyensúlyozott / Prémium / Egyedi), saját FCPXML export.
+- Minden generálási lépés előtt és után pontos, dollárra bontott költségbecslés (szöveg, kép, videó, hang külön-külön).
+
+**Üzemeltetés**
+- Multi-tenant: minden felhasználó csak a saját csatornáit/projektjeit látja (Supabase auth + RLS).
+- Automatikus napi takarítás: lejárt/exportált projektek R2-médiája törlődik, a hivatkozások jelölve maradnak (újragenerálhatók az editorban).
+- Felhasználónkénti rate limiting az AI-költséget generáló műveleteken (részletek: [Biztonság](#biztonság)).
+
+---
+
+## Architektúra — kik a szereplők?
+
+| Komponens | Szerep |
+|---|---|
+| **Next.js 16 (App Router, React 19)** | Maga a webalkalmazás — UI, API route-ok, szerver akciók. |
+| **Supabase** | Postgres adatbázis, email/jelszó auth, Row Level Security (multi-tenant izoláció), Realtime (élő állapotkövetés a szerkesztőben). |
+| **Inngest** | Háttérfolyamatok motorja: a teljes script→hang→kép/videó pipeline lépésenkénti, újrapróbálható jobokban fut, cron-alapú takarítással (R2 média, rate-limit takarítás). Helyi fejlesztéshez külön dev szerver kell (lásd lent). |
+| **Cloudflare R2** | A generált médiafájlok (jelenetképek, .mp4 klipek, borítóképek) tárhelye — az adatbázis csak URL-eket tárol. |
+| **OpenAI / OpenRouter** | Egy kulcs, több modell: szövegírás (Qwen-család), képgenerálás (GPT Image 2), videógenerálás (Wan, Seedance) mind OpenRouteren/OpenAI-n keresztül. |
+| **AI33** | TTS-szolgáltatás-aggregátor (ElevenLabs / MiniMax / Fish Audio hangok egy API mögött) + kiejtési szótárak. |
+| **Pexels / Pixabay / Wikimedia Commons / Internet Archive / Openverse** | Ingyenes stock média források — csak akkor kerülnek be egy jelenetbe, ha az AI-relevancia-ellenőrzés szerint tényleg illenek hozzá. |
+
+### Kétterminálos fejlesztési modell
+
+Az Inngest a generálási pipeline motorja — helyi fejlesztésben **két folyamatnak kell futnia egyszerre**: a Next.js dev szervernek és az Inngest Dev Servernek. Enélkül a "Videó generálása" gomb lenyomása után semmi nem történik (a job a várólistán marad). Lásd [Helyi fejlesztés](#helyi-fejlesztés).
+
+---
+
+## Környezeti változók
+
+Másold a `.env.example`-t `.env.local`-ra, és töltsd ki. 🔒 = titkos, soha ne kerüljön kliens-kódba/git-be/logba.
+
+### Inngest (helyi fejlesztéshez kötelező)
+
+| Változó | Kötelező | Leírás |
+|---|---|---|
+| `INNGEST_DEV` | csak lokálisan | `1`-re állítva Dev Server módba kapcsolja az SDK-t. **Production/Preview-n NE állítsd be** — a Vercel Inngest integráció automatikusan beállítja a saját kulcsait. |
+
+### Supabase
+
+| Változó | Kötelező | Leírás |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | igen | A Supabase projekt URL-je. Publikus (kliens oldalon is használt). |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | igen | Publikus anon kulcs — RLS mögött biztonságos, kliens oldalon is használt. |
+| `SUPABASE_SERVICE_ROLE_KEY` 🔒 | igen | Teljes DB-hozzáférés, megkerüli az RLS-t. **Csak szerver oldalon** használt. Soha ne oszd meg, rotáld azonnal, ha kiszivárgott. |
+
+### AI / média
+
+| Változó | Kötelező | Leírás |
+|---|---|---|
+| `OPENAI_API_KEY` 🔒 | igen | Szövegírás + képgenerálás (közvetlen OpenAI hívásokhoz). |
+| `OPENROUTER_API_KEY` 🔒 | igen | Szövegírás (Qwen), képgenerálás és videógenerálás (Wan/Seedance) OpenRouteren keresztül. |
+| `AI33_API_KEY` 🔒 | igen | TTS (ElevenLabs/MiniMax/Fish Audio) + kiejtési szótárak. |
+| `PEXELS_API_KEY` 🔒 | opcionális | Ingyenes stock kép/videó forrás. Kulcs nélkül egyszerűen kimarad a fallback-láncból. |
+| `PIXABAY_API_KEY` 🔒 | opcionális | Ugyanaz, Pixabay forrással. |
+
+Wikimedia Commons, Openverse és Internet Archive nem igényel kulcsot.
+
+### Cloudflare R2 (jelenetképek + videóklipek tárhelye)
+
+| Változó | Kötelező | Leírás |
+|---|---|---|
+| `R2_ACCOUNT_ID` | ha videós módot/klip-tárolást használsz | Cloudflare account ID. |
+| `R2_ACCESS_KEY_ID` 🔒 | ua. | R2 API token access key — **csak az egy bucketre korlátozott** tokent hozz létre, ne fiók-szintű jogosultsággal. |
+| `R2_SECRET_ACCESS_KEY` 🔒 | ua. | R2 API token secret. |
+| `R2_BUCKET` | ua. | A bucket neve. |
+| `R2_PUBLIC_BASE_URL` | ua. | A bucket publikus URL-je (Public Development URL, vagy saját domain). CORS: `GET`/`HEAD` engedélyezve kell legyen. |
+
+### Vercel / production Inngest (csak a Vercel projekt beállításaiban, nem `.env.local`-ban)
+
+| Változó | Leírás |
+|---|---|
+| `INNGEST_SIGNING_KEY` / `INNGEST_EVENT_KEY` | Az [Inngest Vercel integration](https://vercel.com/integrations/inngest) automatikusan beállítja telepítéskor. |
+| `INNGEST_SERVE_ORIGIN` | Opcionális, csak ha egyedi domain mögött fut az Inngest sync. |
+
+---
+
+## Helyi fejlesztés
+
+### Első indítás
+
+1. **Klónozás + függőségek:**
+   ```powershell
+   npm install
+   ```
+2. **Env fájl:**
+   ```powershell
+   copy .env.example .env.local
+   ```
+   Töltsd ki a fenti táblázat szerinti kulcsokat. Legalább: `INNGEST_DEV=1`, a Supabase 3 változója, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `AI33_API_KEY`.
+3. **Supabase projekt** — ha még nincs, lásd [Supabase beállítás](#supabase-beállítás).
+
+### Minden indításkor — két terminál
+
+**Terminál A — Next app:**
 ```powershell
-copy .env.example .env.local
-```
-
-A `.env.local`-ban legyen legalább: `INNGEST_DEV=1` (dev szerver mód).  
-**Ne** tedd ezt a változót Vercelre.
-
-**Videós mód (Wan + R2):** a képes flow mellett választható Wan videógenerálás (OpenRouter, `OPENROUTER_API_KEY`). A jelenetképek (PNG) és `.mp4` fájlok Cloudflare R2-re mennek — kell: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_BASE_URL` (lásd `.env.example`). Bucket Settings → Public Development URL + CORS (`GET`/`HEAD`). Napi cron / export után a lejárt média `r2:deleted` jelölőt kap; az editorban újragenerálható (`video/regenerate-media`).
-
-2. Terminál A — Next app:
-
-```powershell
-npm install
 npm run dev
 ```
-
 → [http://localhost:3000](http://localhost:3000)
 
-3. Terminál B — Inngest Dev Server:
-
+**Terminál B — Inngest Dev Server:**
 ```powershell
 npm run inngest:dev
 ```
+→ [http://localhost:8288](http://localhost:8288) (Inngest dashboard — itt látod a futó/hibázó jobokat)
 
-→ [http://localhost:8288](http://localhost:8288)
+A videógenerálás (script / hang / képek) **csak akkor fut**, ha mindkettő megy egyszerre.
 
-A videógenerálás (script / hang / képek) csak akkor fut, ha **mindkettő** megy.
+### Egyéb hasznos parancsok
 
-## Auth (Supabase)
+| Parancs | Mit csinál |
+|---|---|
+| `npm run build` | Production build. |
+| `npm run start` | Production szerver indítása (build után). |
+| `npm run lint` | ESLint. |
+| `npx tsc --noEmit` | TypeScript típusellenőrzés build nélkül. |
 
-- Regisztráció: `/register` · Bejelentkezés: `/login` · Fiók / jelszócsere: `/account`
-- Multi-tenant: minden user csak a saját csatornáit és projektjeit látja (RLS + `user_id`)
-- Dashboard → Authentication: Email provider bekapcsolva
-- Devhez ajánlott: **Confirm email** kikapcsolva, különben a signup után email-megerősítés kell
-- Site URL: `http://localhost:3000` (+ Vercel domain productionön)
+A `scripts/` mappa egyszeri, kézi karbantartó parancsfájlokat tartalmaz (R2-migráció/purge, megakadt projekt folytatása, szótár-tulajdonos backfill) — mindegyik `npx tsx --env-file=.env.local scripts/<fájl>.ts` formában futtatható, dry-run alapértelmezéssel (`--confirm` nélkül csak kiírja, mit tenne).
 
-## Vercel + Inngest Cloud
+### Windows: `npm run dev` és a Turbopack
+
+A `dev` parancs szándékosan **webpack**-et használ (`next dev --webpack`), nem a Next.js 16 alapértelmezett Turbopack motorját. Ennek oka egy ismert, jelenleg még javítatlan Turbopack-hiba Windowson: a `next dev` leállításakor a Turbopack háttérfolyamatai (pl. `postcss.js` worker) nem szűnnek meg rendesen, "árva" processzekként a gépen maradnak — ismételt indítás/leállítás (pl. egy agent vagy szkript, ami sokszor újraindítja a dev szervert) percek alatt több ezer felhalmozódott `node.exe` processzt és 10+ GB felesleges RAM-használatot eredményezhet.
+
+Forrás / részletek:
+- [anthropics/claude-code#67163](https://github.com/anthropics/claude-code/issues/67163) — a Turbopack `postcss.js` worker-jei árván maradnak Windows alatt leálláskor.
+- [vercel/next.js#94915](https://github.com/vercel/next.js/issues/94915) — a Turbopack dev cache-e és fájlfigyelője korlátlanul nőhet (16.2.9-en is megfigyelve), a webpack-re váltás a közösség által is megerősített stabil megoldás.
+
+**Ha mégis ki akarod próbálni a Turbopackot** (pl. ha időközben megjelent egy javítás): `npm run dev:turbopack`. Figyeld a processzek számát közben (PowerShell: `(Get-Process node).Count`), és állítsd le azonnal, ha szokatlanul magasra szökik.
+
+**Ez a hiba csak a `next dev`-et érinti** — a `npm run build` / `npm run start` (és így a Vercel deployment is) egyszeri lefutású, nem-figyelő módban használja a Turbopack-ot build-hez, ami strukturálisan nem érintett és ellenőrizve is lett (tiszta build, nincs elszabaduló processz).
+
+---
+
+## Supabase beállítás
+
+1. Hozz létre egy új Supabase projektet.
+2. Futtasd le a `supabase/migrations/*.sql` fájlokat **fájlnév szerinti sorrendben** — a Supabase CLI-vel (`supabase db push`) vagy a Dashboard SQL Editorában egyesével. A migrációk létrehozzák a teljes séma + RLS szabályokat.
+3. Dashboard → Authentication → Providers: kapcsold be az **Email** providert.
+4. Fejlesztéshez ajánlott: Authentication beállításoknál kapcsold ki a **Confirm email**-t, különben regisztráció után email-megerősítés kell, mielőtt be lehetne lépni.
+5. Authentication → URL Configuration → Site URL: `http://localhost:3000` fejlesztéshez (+ a production Vercel domain, ha már van).
+6. Ha egy már működő, egyfelhasználós telepítésből nyitod meg az alkalmazást több felhasználó felé: a meglévő AI33 kiejtési szótárak tulajdonos nélkül maradnának (AI33 oldalon nincs user mező) — futtasd le egyszer:
+   ```powershell
+   npx tsx --env-file=.env.local scripts/backfill-dictionary-owners.ts <a-te-supabase-user-uuid-od> --confirm
+   ```
+
+Regisztráció: `/register` · Bejelentkezés: `/login` · Fiók / jelszócsere: `/account`.
+
+---
+
+## Deployment (Vercel + Inngest Cloud)
 
 1. Deployold a projektet Vercelre.
-2. Állítsd be a Supabase / OpenAI / OpenRouter / AI33 / R2 (`R2_*`) / stb. env változókat a Vercel projektben.
-3. Telepítsd az [Inngest Vercel integration](https://vercel.com/integrations/inngest)-t — ez automatikusan beállítja:
-   - `INNGEST_SIGNING_KEY`
-   - `INNGEST_EVENT_KEY`
-4. **Ne** állítsd be az `INNGEST_DEV`-et Production / Preview környezetben.
-5. Ha Vercel Deployment Protection be van kapcsolva, Inngesthez kell Protection Bypass (lásd Inngest Vercel docs).
+2. Állítsd be a [Környezeti változók](#környezeti-változók) táblázatában felsorolt összes szükséges kulcsot a Vercel projekt Settings → Environment Variables alatt.
+3. Telepítsd az [Inngest Vercel integration](https://vercel.com/integrations/inngest)-et — ez automatikusan beállítja az `INNGEST_SIGNING_KEY` / `INNGEST_EVENT_KEY` változókat.
+4. **Ne** állítsd be az `INNGEST_DEV`-et Production/Preview környezetben.
+5. Ha Vercel Deployment Protection be van kapcsolva, az Inngesthez Protection Bypass szükséges (lásd az Inngest Vercel dokumentációját).
 
-Új deploy után az Inngest Cloud szinkronizálja a `/api/inngest` funkciókat.
+Új deploy után az Inngest Cloud automatikusan szinkronizálja a `/api/inngest` funkciókat.
+
+---
+
+## Biztonság
+
+Részletes architektúra-leírás: [`docs/SECURITY.md`](docs/SECURITY.md). Röviden:
+
+- **API-kulcsok**: minden titkos kulcs kizárólag szerver oldali kódban (`src/lib/*.ts`) olvasódik, kliens-komponens soha nem éri el őket. Csak a Supabase URL és anon kulcs jut el a böngészőbe (ez tervezett és biztonságos, RLS mögött).
+- **Jogosultság-ellenőrzés**: minden API route explicit tulajdonos-ellenőrzést végez, mielőtt bármilyen adatot olvasna/írna — lásd `src/lib/auth.ts` (`assert*Owned` függvények). Az RLS szabályok is megvannak minden táblán, defense-in-depth-ként.
+- **Rate limiting**: az AI-hívást indító route-ok (generálás indítása, kép/klip-regenerálás, borítókép, hang-előhallgatás) felhasználónkénti, Supabase-alapú rate limithez vannak kötve — nincs korlátlan, egy fiókról indítható visszaélés.
+- **Proxy védelem**: az egyetlen szerver oldali "fetch más URL-t" végpont (`/api/proxy`, a médialetöltéshez az editorban/exportban) szűk host-allowlistet és privát-IP-tiltást alkalmaz SSRF ellen.
+- **Kulcs-rotáció**: a `SUPABASE_SERVICE_ROLE_KEY` és az R2 kulcsok a legérzékenyebbek — rotáld azonnal, ha valaha kiszivárogtak; R2-hez hozz létre bucket-szintre korlátozott API tokent, ne fiók-szintűt.
