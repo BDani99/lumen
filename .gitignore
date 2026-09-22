@@ -43,7 +43,7 @@ yarn-error.log*
 next-env.d.ts
 
 .mcp.json
-.claude/settings.local.json
+.claude/
 .cursor/
 
 # vendored AI-agent skills — regenerable from skills-lock.json (npx skills add),
