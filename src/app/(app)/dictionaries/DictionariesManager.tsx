@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Banner, Button, Input, Label, Select } from "@/components/ui";
+import { Banner, Button, ConfirmDialog, Input, Label, Select } from "@/components/ui";
+import { useConfirm } from "@/hooks/useConfirm";
 
 interface DictionaryRule {
   from: string;
@@ -19,6 +20,7 @@ interface Dictionary {
 const emptyRule = (): DictionaryRule => ({ from: "", to: "", matchType: "word", caseSensitive: false });
 
 export default function DictionariesManager() {
+  const { confirm, dialogProps } = useConfirm();
   const [dictionaries, setDictionaries] = useState<Dictionary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -120,9 +122,13 @@ export default function DictionariesManager() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Biztosan törlöd ezt a szótárat? A csatornák, amik használják, ezután szótár nélkül generálnak.")) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Biztosan törlöd ezt a szótárat?",
+      description: "A csatornák, amik használják, ezután szótár nélkül generálnak.",
+      tone: "danger",
+      confirmLabel: "Törlés",
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`/api/dictionaries/${id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
@@ -286,6 +292,7 @@ export default function DictionariesManager() {
           ))}
         </ul>
       )}
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

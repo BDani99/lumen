@@ -4,11 +4,13 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import { STATUS_LABELS } from "@/lib/generation-status";
-import { Banner, Button, Input, Modal, Select, StatusBadge, Textarea } from "@/components/ui";
+import { Banner, Button, ConfirmDialog, Input, Modal, Select, StatusBadge, Textarea } from "@/components/ui";
+import { useConfirm } from "@/hooks/useConfirm";
 import { isPlayableImageUrl } from "@/lib/video-mode";
 import { ProExportButton } from "@/components/pro/ProExportButton";
 
 export default function ProjectTable({ initialProjects }: { initialProjects: any[] }) {
+  const { confirm, dialogProps } = useConfirm();
   const [projects, setProjects] = useState(initialProjects);
   const [selectedProject, setSelectedProject] = useState<any | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -91,13 +93,13 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
   };
 
   const handleDelete = async (id: string) => {
-    if (
-      !window.confirm(
-        "Biztosan törölni szeretnéd ezt a projektet? Ez a művelet visszafordíthatatlan."
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Biztosan törlöd ezt a projektet?",
+      description: "Ez a művelet visszafordíthatatlan.",
+      tone: "danger",
+      confirmLabel: "Törlés",
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`/api/videos/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Nem sikerült a törlés");
@@ -419,6 +421,7 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
           </div>
         )}
       </Modal>
+      <ConfirmDialog {...dialogProps} />
     </>
   );
 }

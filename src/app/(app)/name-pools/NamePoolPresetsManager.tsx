@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Banner, Button, Input, Label, Textarea } from "@/components/ui";
+import { Banner, Button, ConfirmDialog, Input, Label, Textarea } from "@/components/ui";
+import { useConfirm } from "@/hooks/useConfirm";
 import { formatNameListText, parseNameList, type NamePoolCategoryDef, type NamePoolPreset } from "@/lib/name-pools";
 
 type CategoryForm = { key: string; label: string; promptHint: string; namesText: string };
@@ -18,6 +19,7 @@ function presetToForm(preset: NamePoolPreset): CategoryForm[] {
 }
 
 export default function NamePoolPresetsManager() {
+  const { confirm, dialogProps } = useConfirm();
   const [presets, setPresets] = useState<NamePoolPreset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -113,13 +115,13 @@ export default function NamePoolPresetsManager() {
   };
 
   const handleDelete = async (id: string) => {
-    if (
-      !confirm(
-        "Biztosan törlöd ezt a névkészletet? A csatornák, amik ezt használják, ezután névkészlet nélkül maradnak."
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Biztosan törlöd ezt a névkészletet?",
+      description: "A csatornák, amik ezt használják, ezután névkészlet nélkül maradnak.",
+      tone: "danger",
+      confirmLabel: "Törlés",
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`/api/name-pool-presets/${id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
@@ -260,6 +262,7 @@ export default function NamePoolPresetsManager() {
           })}
         </ul>
       )}
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

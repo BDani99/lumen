@@ -9,7 +9,8 @@ import {
   pipelineStageIndex,
   statusLabel,
 } from "@/lib/generation-status";
-import { Banner, Button, StatusBadge } from "@/components/ui";
+import { Banner, Button, ConfirmDialog, StatusBadge } from "@/components/ui";
+import { useConfirm } from "@/hooks/useConfirm";
 import { cn } from "@/lib/cn";
 import { isStalled, minutesSince } from "@/lib/stall-detection";
 
@@ -53,6 +54,7 @@ export default function ProgressView({
   initialProject: ProjectInfo;
   initialLogs: LogRow[];
 }) {
+  const { confirm, dialogProps } = useConfirm();
   const [project, setProject] = useState(initialProject);
   const [logs, setLogs] = useState<LogRow[]>(initialLogs);
   const [stopping, setStopping] = useState(false);
@@ -85,9 +87,12 @@ export default function ProgressView({
 
   async function handleStop() {
     if (stopping || isTerminal) return;
-    const ok = window.confirm(
-      "Biztosan leállítod a generálást? A folyamat megszakad, és nem folytatódik automatikusan."
-    );
+    const ok = await confirm({
+      title: "Biztosan leállítod a generálást?",
+      description: "A folyamat megszakad, és nem folytatódik automatikusan.",
+      tone: "danger",
+      confirmLabel: "Leállítás",
+    });
     if (!ok) return;
     setStopping(true);
     setStopError(null);
@@ -384,6 +389,7 @@ export default function ProgressView({
           )}
         </div>
       </section>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }
