@@ -4,6 +4,7 @@ export { Banner } from "./Banner";
 export { EmptyState } from "./EmptyState";
 export { Modal } from "./Modal";
 export { ConfirmDialog } from "./ConfirmDialog";
+export { FormSection, FormSubsection } from "./FormSection";
 export { StatusBadge } from "./StatusBadge";
 export { Toggle } from "./Toggle";
 export { SegmentedTabs } from "./SegmentedTabs";
