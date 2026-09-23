@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn";
+import { FOCUS_RING } from "@/lib/ui-tokens";
 
 export function SegmentedTabs<T extends string>({
   options,
@@ -28,6 +29,7 @@ export function SegmentedTabs<T extends string>({
           onClick={() => onChange(opt.id)}
           className={cn(
             "flex-1 cursor-pointer rounded-[calc(var(--radius)-2px)] px-3 py-2 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+            FOCUS_RING,
             value === opt.id ? "bg-accent-muted text-ink font-medium" : "text-muted hover:text-ink"
           )}
         >

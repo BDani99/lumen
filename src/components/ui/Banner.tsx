@@ -7,7 +7,7 @@ const tones: Record<Tone, string> = {
   info: "border-border bg-surface text-ink",
   success: "border-success/30 bg-success-muted text-ink",
   error: "border-danger/30 bg-danger-muted text-ink",
-  warning: "border-accent/30 bg-accent-muted text-ink",
+  warning: "border-warning/30 bg-warning-muted text-ink",
 };
 
 export function Banner({
