@@ -50,7 +50,7 @@ mögött biztonságos).
 - R2 API token — hozz létre egy, **csak az egy bucketre** korlátozott tokent
   (Cloudflare dashboard → R2 → Manage API Tokens), ne fiók-szintű
   jogosultsággal.
-- OpenAI / OpenRouter / AI33 / Pexels / Pixabay kulcsok — ezek egy-egy
+- OpenAI / OpenRouter / TTS API / Pexels / Pixabay kulcsok — ezek egy-egy
   megosztott, fiók-szintű kulcsok az egész alkalmazáshoz (nem
   per-felhasználó). Ha bármelyik szolgáltatónál lehetséges, állíts be
   költség-limitet/riasztást a fiókon, mert egy visszaélő felhasználó (rate

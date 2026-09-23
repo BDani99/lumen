@@ -60,7 +60,7 @@ Adj meg egy címet és (opcionálisan) egy hosszúságot egy csatornához — Lu
 | **Inngest** | Háttérfolyamatok motorja: a teljes script→hang→kép/videó pipeline lépésenkénti, újrapróbálható jobokban fut, cron-alapú takarítással (R2 média, rate-limit takarítás). Helyi fejlesztéshez külön dev szerver kell (lásd lent). |
 | **Cloudflare R2** | A generált médiafájlok (jelenetképek, .mp4 klipek, borítóképek) tárhelye — az adatbázis csak URL-eket tárol. |
 | **OpenAI / OpenRouter** | Egy kulcs, több modell: szövegírás (Qwen-család), képgenerálás (GPT Image 2), videógenerálás (Wan, Seedance) mind OpenRouteren/OpenAI-n keresztül. |
-| **AI33** | TTS-szolgáltatás-aggregátor (ElevenLabs / MiniMax / Fish Audio hangok egy API mögött) + kiejtési szótárak. |
+| **TTS API** | Narráció generálása (ElevenLabs / MiniMax / Fish Audio hangok egy közös API mögött) + kiejtési szótárak. |
 | **Pexels / Pixabay / Wikimedia Commons / Internet Archive / Openverse** | Ingyenes stock média források — csak akkor kerülnek be egy jelenetbe, ha az AI-relevancia-ellenőrzés szerint tényleg illenek hozzá. |
 
 ### Kétterminálos fejlesztési modell
@@ -181,7 +181,7 @@ Forrás / részletek:
 3. Dashboard → Authentication → Providers: kapcsold be az **Email** providert.
 4. Fejlesztéshez ajánlott: Authentication beállításoknál kapcsold ki a **Confirm email**-t, különben regisztráció után email-megerősítés kell, mielőtt be lehetne lépni.
 5. Authentication → URL Configuration → Site URL: `http://localhost:3000` fejlesztéshez (+ a production Vercel domain, ha már van).
-6. Ha egy már működő, egyfelhasználós telepítésből nyitod meg az alkalmazást több felhasználó felé: a meglévő AI33 kiejtési szótárak tulajdonos nélkül maradnának (AI33 oldalon nincs user mező) — futtasd le egyszer:
+6. Ha egy már működő, egyfelhasználós telepítésből nyitod meg az alkalmazást több felhasználó felé: a meglévő kiejtési szótárak tulajdonos nélkül maradnának (a TTS API oldalán nincs user mező) — futtasd le egyszer:
    ```powershell
    npx tsx --env-file=.env.local scripts/backfill-dictionary-owners.ts <a-te-supabase-user-uuid-od> --confirm
    ```
