@@ -17,6 +17,13 @@
   --danger-muted: rgba(196, 92, 74, 0.14);
   --success: #8a9a5b;
   --success-muted: rgba(138, 154, 91, 0.14);
+  /* Warm amber — visually distinct from --accent so a caution reads as
+     caution, not as another info/active teal surface. */
+  --warning: #c99a4a;
+  --warning-muted: rgba(201, 154, 74, 0.14);
+  /* Text color for surfaces painted with --accent (buttons, active tabs) —
+     named so it isn't a magic hex repeated at each call site. */
+  --on-accent: #0a1211;
   --radius: 10px;
   --radius-panel: 14px;
   --background: var(--bg);
@@ -41,6 +48,9 @@
   --color-danger-muted: var(--danger-muted);
   --color-success: var(--success);
   --color-success-muted: var(--success-muted);
+  --color-warning: var(--warning);
+  --color-warning-muted: var(--warning-muted);
+  --color-on-accent: var(--on-accent);
   --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-syne), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, monospace;
@@ -71,6 +81,88 @@ label {
 button:disabled,
 select:disabled {
   cursor: not-allowed;
+}
+
+/* Native checkbox/range/number controls, restyled to the cinema palette
+   instead of rendering as unbranded OS chrome. */
+input[type="checkbox"] {
+  appearance: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: none;
+  border-radius: 4px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--surface);
+  display: inline-grid;
+  place-content: center;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+input[type="checkbox"]::before {
+  content: "";
+  width: 0.65rem;
+  height: 0.65rem;
+  transform: scale(0);
+  transition: transform 120ms ease;
+  background-color: var(--on-accent);
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+}
+input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+input[type="range"] {
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-elevated);
+  transition: transform 150ms ease;
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--bg-elevated);
+  border-radius: 50%;
+  background: var(--accent);
+}
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+input[type="range"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+/* Number inputs keep native spinner semantics but not the OS-chrome arrows —
+   this app's Input component already has its own visual language. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  appearance: textfield;
 }
 
 /* Warm projection atmosphere */
