@@ -231,7 +231,7 @@ export default function DictionariesManager() {
                 </Button>
               </div>
             ))}
-            <Button type="button" variant="secondary" className="!py-1.5 text-xs" onClick={addRule}>
+            <Button type="button" variant="secondary" size="sm" onClick={addRule}>
               + Szabály hozzáadása
             </Button>
           </div>
@@ -281,10 +281,10 @@ export default function DictionariesManager() {
                 <p className="text-xs text-muted">{dict.rules.length} szabály</p>
               </div>
               <div className="flex gap-2 shrink-0">
-                <Button variant="secondary" className="!py-1.5 text-xs" onClick={() => openEditForm(dict)}>
+                <Button variant="secondary" size="sm" onClick={() => openEditForm(dict)}>
                   Szerkesztés
                 </Button>
-                <Button variant="ghost" className="!py-1.5 text-xs" onClick={() => handleDelete(dict.id)}>
+                <Button variant="ghost" size="sm" onClick={() => handleDelete(dict.id)}>
                   Törlés
                 </Button>
               </div>

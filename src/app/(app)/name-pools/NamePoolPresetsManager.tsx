@@ -191,7 +191,7 @@ export default function NamePoolPresetsManager() {
                     <Button
                       type="button"
                       variant="ghost"
-                      className="!px-2 !py-1.5 text-xs"
+                      size="sm"
                       onClick={() => removeCategory(i)}
                       disabled={formCategories.length <= 1}
                     >
@@ -213,7 +213,7 @@ export default function NamePoolPresetsManager() {
                 </div>
               );
             })}
-            <Button type="button" variant="secondary" className="!py-1.5 text-xs" onClick={addCategory}>
+            <Button type="button" variant="secondary" size="sm" onClick={addCategory}>
               + Kategória hozzáadása
             </Button>
           </div>
@@ -250,10 +250,10 @@ export default function NamePoolPresetsManager() {
                   </p>
                 </div>
                 <div className="flex gap-2 shrink-0">
-                  <Button variant="secondary" className="!py-1.5 text-xs" onClick={() => openEditForm(preset)}>
+                  <Button variant="secondary" size="sm" onClick={() => openEditForm(preset)}>
                     Szerkesztés
                   </Button>
-                  <Button variant="ghost" className="!py-1.5 text-xs" onClick={() => handleDelete(preset.id)}>
+                  <Button variant="ghost" size="sm" onClick={() => handleDelete(preset.id)}>
                     Törlés
                   </Button>
                 </div>

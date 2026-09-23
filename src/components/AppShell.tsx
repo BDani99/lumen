@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { logout } from "@/app/auth/actions";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui";
+import { FOCUS_RING } from "@/lib/ui-tokens";
 
 const NAV = [
   { href: "/", label: "Projektek" },
@@ -56,6 +57,7 @@ export default function AppShell({
                       href={item.href}
                       className={cn(
                         "cursor-pointer rounded-[var(--radius)] px-3 py-1.5 text-sm transition-colors",
+                        FOCUS_RING,
                         active
                           ? "bg-accent-muted text-ink"
                           : "text-muted hover:text-ink hover:bg-surface"
@@ -89,7 +91,7 @@ export default function AppShell({
               Fiók
             </Link>
             <form action={logout}>
-              <Button type="submit" variant="ghost" className="!py-1.5 !px-3">
+              <Button type="submit" variant="ghost" size="sm">
                 Kilépés
               </Button>
             </form>

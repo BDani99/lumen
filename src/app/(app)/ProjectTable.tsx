@@ -6,6 +6,7 @@ import { createClient } from "@/utils/supabase/client";
 import { STATUS_LABELS } from "@/lib/generation-status";
 import { Banner, Button, ConfirmDialog, Input, Modal, Select, StatusBadge, Textarea } from "@/components/ui";
 import { useConfirm } from "@/hooks/useConfirm";
+import { FOCUS_RING } from "@/lib/ui-tokens";
 import { isPlayableImageUrl } from "@/lib/video-mode";
 import { ProExportButton } from "@/components/pro/ProExportButton";
 
@@ -180,7 +181,7 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
               <th className="p-3 font-medium text-muted">
                 Cím
                 <Input
-                  className="mt-1.5 !py-1.5 text-xs"
+                  className="mt-1.5" size="sm"
                   placeholder="Szűrés…"
                   value={filterTitle}
                   onChange={(e) => setFilterTitle(e.target.value)}
@@ -189,7 +190,7 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
               <th className="p-3 font-medium text-muted min-w-[9rem]">
                 Csatorna
                 <Select
-                  className="mt-1.5 !py-1.5 text-xs"
+                  className="mt-1.5" size="sm"
                   value={filterChannel}
                   onChange={(e) => setFilterChannel(e.target.value)}
                 >
@@ -204,7 +205,7 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
               <th className="p-3 font-medium text-muted min-w-[9rem]">
                 Státusz
                 <Select
-                  className="mt-1.5 !py-1.5 text-xs"
+                  className="mt-1.5" size="sm"
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
                 >
@@ -235,10 +236,10 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
                     <button
                       type="button"
                       onClick={() => toggleFlag(p.id, p.is_flagged)}
-                      className={`cursor-pointer text-lg transition-colors ${
+                      className={`-m-2 cursor-pointer rounded-[var(--radius)] p-2 text-lg transition-colors ${FOCUS_RING} ${
                         p.is_flagged ? "text-accent" : "text-border-strong hover:text-muted"
                       }`}
-                      title="Megjelölés"
+                      aria-label={p.is_flagged ? "Megjelölés eltávolítása" : "Megjelölés"}
                     >
                       ★
                     </button>
@@ -285,7 +286,7 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
                       ) : (
                         <Link
                           href={`/projects/${p.id}/editor`}
-                          className="cursor-pointer text-xs font-medium text-accent hover:text-accent-hover"
+                          className={`-m-2 cursor-pointer rounded-[var(--radius)] p-2 text-xs font-medium text-accent transition-colors hover:text-accent-hover ${FOCUS_RING}`}
                         >
                           Editor
                         </Link>
@@ -293,7 +294,7 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
                       <button
                         type="button"
                         onClick={() => handleDelete(p.id)}
-                        className="cursor-pointer text-xs text-danger hover:opacity-80"
+                        className={`-m-2 cursor-pointer rounded-[var(--radius)] p-2 text-xs text-danger transition-opacity hover:opacity-80 ${FOCUS_RING}`}
                       >
                         Törlés
                       </button>
@@ -363,7 +364,7 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
                     rel="noopener noreferrer"
                     className="inline-block cursor-pointer"
                   >
-                    <Button variant="secondary" className="!py-1.5 text-xs">
+                    <Button variant="secondary" size="sm">
                       Letöltés
                     </Button>
                   </a>
@@ -396,14 +397,14 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
                 <div className="flex gap-2">
                   <Button
                     variant="ghost"
-                    className="!py-1.5 text-xs"
+                    size="sm"
                     onClick={() => copyFirstParagraph(selectedProject.generated_script || "")}
                   >
                     Első bek.
                   </Button>
                   <Button
                     variant="secondary"
-                    className="!py-1.5 text-xs"
+                    size="sm"
                     onClick={() =>
                       copyToClipboard(selectedProject.generated_script || "", "Szkript")
                     }

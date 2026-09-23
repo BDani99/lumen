@@ -35,7 +35,7 @@ export default async function ProjectProgressPage({
     : (project as any).channels?.name;
 
   return (
-    <main className="mx-auto max-w-3xl px-4 md:px-8 py-6 md:py-8 animate-lumen-in">
+    <main className="mx-auto max-w-3xl px-4 md:px-8 py-8 md:py-10 animate-lumen-in">
       <ProgressView
         initialProject={{
           id: project.id,

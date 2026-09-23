@@ -231,7 +231,7 @@ export default function ProgressView({
             </Button>
           )}
           <Link href={`/projects/${project.id}/editor`} className="cursor-pointer">
-            <Button variant="secondary" className="!py-1.5 !px-3 text-xs">
+            <Button variant="secondary" size="sm">
               Editor
             </Button>
           </Link>
@@ -244,7 +244,7 @@ export default function ProgressView({
         </Banner>
       )}
       <div>
-        <h1 className="font-display text-2xl md:text-3xl tracking-tight text-ink leading-normal pb-0.5">
+        <h1 className="font-display text-3xl md:text-4xl tracking-tight text-ink leading-normal pb-0.5">
           {project.title}
         </h1>
         <p className="mt-2 text-sm text-muted">
@@ -261,7 +261,7 @@ export default function ProgressView({
             szöveg/hang/kép/videó nem vész el és nem készül el duplán.
           </p>
           {resumeError && <p className="mb-3 text-sm text-danger">{resumeError}</p>}
-          <Button className="!py-2" disabled={resuming} onClick={handleResume}>
+          <Button disabled={resuming} onClick={handleResume}>
             {resuming ? "Folytatás indítása…" : "Folytatás"}
           </Button>
         </Banner>
@@ -274,7 +274,7 @@ export default function ProgressView({
             hanggenerálást.
           </p>
           <Link href={`/projects/${project.id}/editor`}>
-            <Button className="!py-2">Megnyitás az editorban</Button>
+            <Button>Megnyitás az editorban</Button>
           </Link>
         </Banner>
       )}

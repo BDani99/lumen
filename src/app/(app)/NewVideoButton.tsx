@@ -460,7 +460,7 @@ export default function NewVideoButton({ channels }: { channels: any[] }) {
                             {customScript.length.toLocaleString("hu-HU")} karakter
                           </p>
                         </div>
-                        <Button variant="ghost" className="!py-1 text-xs" onClick={clearScript}>
+                        <Button variant="ghost" size="sm" onClick={clearScript}>
                           Eltávolítás
                         </Button>
                       </div>
@@ -488,7 +488,7 @@ export default function NewVideoButton({ channels }: { channels: any[] }) {
                         {MAX_SCRIPT_CHARS.toLocaleString("hu-HU")} karakter
                       </p>
                       {hasCustomScript && (
-                        <Button variant="ghost" className="!py-1 text-xs" onClick={clearScript}>
+                        <Button variant="ghost" size="sm" onClick={clearScript}>
                           Törlés
                         </Button>
                       )}

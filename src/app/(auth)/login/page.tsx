@@ -49,7 +49,10 @@ export default async function LoginPage({
 
         <p className="mt-6 text-center text-sm text-muted">
           Nincs fiókod?{" "}
-          <Link href="/register" className="text-accent hover:text-accent-hover">
+          <Link
+            href="/register"
+            className="rounded-[var(--radius)] text-accent hover:text-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+          >
             Regisztráció
           </Link>
         </p>
