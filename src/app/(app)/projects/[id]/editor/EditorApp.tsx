@@ -181,7 +181,7 @@ export default function EditorApp({
       )}
 
       {/* Desktop grid / mobile stack */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[minmax(220px,1fr)_minmax(280px,1.4fr)_minmax(240px,1.1fr)] lg:overflow-hidden">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[minmax(220px,0.9fr)_minmax(320px,1.7fr)_minmax(240px,1fr)] lg:overflow-hidden">
         <ScriptPanel
           isScriptReview={isScriptReview}
           scriptDraft={scriptEditing.scriptDraft}
