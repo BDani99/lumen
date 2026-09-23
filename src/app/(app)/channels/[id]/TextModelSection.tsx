@@ -1,6 +1,6 @@
 "use client";
 
-import { Label, Select } from "@/components/ui";
+import { FormSection, Label, Select } from "@/components/ui";
 import { CostMiniTable } from "@/components/CostMiniTable";
 import {
   TEXT_MODEL_OPTIONS,
@@ -24,7 +24,8 @@ export function TextModelSection({
   setPolishModel: (value: string) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <FormSection title="Szövegmodellek" description="A forgatókönyvírás és a záró simítás modellje.">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       <div>
         <Label>Szöveg Modell</Label>
         <Select value={textModel} onChange={(e) => setTextModel(e.target.value)}>
@@ -89,6 +90,7 @@ export function TextModelSection({
           ]}
         />
       </div>
-    </div>
+      </div>
+    </FormSection>
   );
 }

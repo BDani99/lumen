@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import VoiceSettingsPanel from "./VoiceSettingsPanel";
-import { Button, Input, Label } from "@/components/ui";
+import { Banner, Button, FormSection, Input, Label } from "@/components/ui";
+import { FOCUS_RING } from "@/lib/ui-tokens";
 import { useChannelFormState } from "./hooks/useChannelFormState";
 import { useVideoDefaultsState } from "./hooks/useVideoDefaultsState";
 import { useNamePoolPresets } from "./hooks/useNamePoolPresets";
@@ -68,25 +69,32 @@ export default function ChannelForm({
 
   return (
     <div className="space-y-6">
-      {formError && (
-        <p className="rounded-[var(--radius)] border border-danger/30 bg-danger-muted px-4 py-3 text-sm text-ink">{formError}</p>
-      )}
-      <div className="flex items-center space-x-4 mb-8">
-        <Link href="/channels" className="text-muted hover:text-ink transition-colors">&larr; Vissza</Link>
-        <h1 className="font-display text-3xl tracking-tight text-ink">{isNew ? "Új Csatorna" : "Csatorna Szerkesztése"}</h1>
+      {formError && <Banner tone="error">{formError}</Banner>}
+      <div className="flex items-center gap-4 mb-8">
+        <Link
+          href="/channels"
+          className={`rounded-[var(--radius)] text-muted transition-colors hover:text-ink ${FOCUS_RING}`}
+        >
+          &larr; Vissza
+        </Link>
+        <h1 className="font-display text-3xl md:text-4xl tracking-tight text-ink">
+          {isNew ? "Új csatorna" : "Csatorna szerkesztése"}
+        </h1>
       </div>
 
-      <div className="space-y-6 border-t border-border pt-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <Label>Csatorna Neve</Label>
-            <Input type="text" value={form.name} onChange={(e) => form.setName(e.target.value)} />
+      <div className="space-y-6">
+        <FormSection title="Alapadatok" description="A csatorna neve és a generálás nyelve.">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <Label>Csatorna neve</Label>
+              <Input type="text" value={form.name} onChange={(e) => form.setName(e.target.value)} />
+            </div>
+            <div>
+              <Label>Nyelv</Label>
+              <Input type="text" value={form.language} onChange={(e) => form.setLanguage(e.target.value)} />
+            </div>
           </div>
-          <div>
-            <Label>Nyelv</Label>
-            <Input type="text" value={form.language} onChange={(e) => form.setLanguage(e.target.value)} />
-          </div>
-        </div>
+        </FormSection>
 
         <TextModelSection
           textModel={form.textModel}
@@ -163,9 +171,9 @@ export default function ChannelForm({
 
         <VoiceSettingsPanel value={voiceSettings} onChange={setVoiceSettings} />
 
-        <div className="flex justify-end space-x-4 pt-6">
+        <div className="flex justify-end border-t border-border pt-6">
           <Button onClick={handleSave} disabled={loading} className="!px-6 !py-3">
-            {loading ? "Mentés..." : "Csatorna Mentése"}
+            {loading ? "Mentés…" : "Csatorna mentése"}
           </Button>
         </div>
       </div>

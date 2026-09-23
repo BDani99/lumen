@@ -1,6 +1,6 @@
 "use client";
 
-import { Label, Select } from "@/components/ui";
+import { FormSection, Label, Select } from "@/components/ui";
 import { CostMiniTable } from "@/components/CostMiniTable";
 import { VideoScenePatternFields } from "@/components/VideoScenePatternFields";
 import { formatUsd, formatUsdPerUnit, videoClipCost, videoCostPerSecond } from "@/lib/cost-estimate";
@@ -62,14 +62,10 @@ export function VideoDefaultsSection({
   allowedResolutions: VideoResolution[];
 }) {
   return (
-    <div className="space-y-3 border-t border-border pt-6">
-      <div>
-        <p className="text-sm font-medium text-ink">Videógenerálás alapértelmezések</p>
-        <p className="mt-1 text-xs text-muted">
-          Az új videó modal ezeket veszi át. A videómodellek (Seedance, Wan) az OpenRouteren
-          futnak (ugyanaz a kulcs, mint a Qwen).
-        </p>
-      </div>
+    <FormSection
+      title="Videógenerálás alapértelmezések"
+      description="Az új videó modal ezeket veszi át. A videómodellek (Seedance, Wan) az OpenRouteren futnak (ugyanaz a kulcs, mint a Qwen)."
+    >
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <Label>Alap média mód</Label>
@@ -185,6 +181,6 @@ export function VideoDefaultsSection({
           lépnek életbe, ha egy videónál átváltasz videó módra.
         </p>
       )}
-    </div>
+    </FormSection>
   );
 }

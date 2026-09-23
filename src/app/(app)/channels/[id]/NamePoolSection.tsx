@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Label, Select } from "@/components/ui";
+import { FormSection, Label, Select, Toggle } from "@/components/ui";
 import type { NamePoolPreset } from "@/lib/name-pools";
 
 export function NamePoolSection({
@@ -20,26 +20,16 @@ export function NamePoolSection({
   selectedNamePoolPreset: NamePoolPreset | null;
 }) {
   return (
-    <div className="space-y-3 border-t border-border pt-6">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-ink">Névkészlet</p>
-          <p className="mt-1 text-xs text-muted">
-            Kapcsoló bekapcsolva + a kiválasztott névkészlet minden kategóriájában elég név
-            esetén: az AI ezekből választ, a glossaryba kerülő neveket mentjük (név + utolsó
-            használat), és a gyakori/nemrég használt neveket ritkábbakra cseréljük.
-          </p>
+    <FormSection
+      title="Névkészlet"
+      description="Kapcsoló bekapcsolva + a kiválasztott névkészlet minden kategóriájában elég név esetén: az AI ezekből választ, a glossaryba kerülő neveket mentjük (név + utolsó használat), és a gyakori/nemrég használt neveket ritkábbakra cseréljük."
+      action={
+        <div className="inline-flex items-center gap-2 text-sm text-ink">
+          <Toggle checked={useNamePools} onChange={setUseNamePools} label="Névkészlet funkció" />
+          <span>Névkészlet funkció</span>
         </div>
-        <label className="inline-flex items-center gap-2 shrink-0 cursor-pointer text-sm text-ink">
-          <input
-            type="checkbox"
-            checked={useNamePools}
-            onChange={(e) => setUseNamePools(e.target.checked)}
-            className="w-5 h-5 accent-[var(--accent)] cursor-pointer"
-          />
-          Névkészlet funkció
-        </label>
-      </div>
+      }
+    >
       <div>
         <div className="flex items-center justify-between">
           <Label className="mb-0">Névkészlet</Label>
@@ -78,6 +68,6 @@ export function NamePoolSection({
         ) : (
           <p className="text-xs text-danger">Válassz egy névkészletet, különben a funkció nem fut.</p>
         ))}
-    </div>
+    </FormSection>
   );
 }

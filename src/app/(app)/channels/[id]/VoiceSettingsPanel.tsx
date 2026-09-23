@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { CostMiniTable } from "@/components/CostMiniTable";
+import { FormSection } from "@/components/ui";
 import { formatUsdPerUnit, voiceCostPer1kChars } from "@/lib/cost-estimate";
 import { MODELS, PROVIDER_HEALTH_LABEL, PROVIDERS, TTS_LANGUAGE_OPTIONS, defaultModelForProvider } from "./voice-settings/constants";
 import { useAi33Status } from "./voice-settings/hooks/useAi33Status";
@@ -54,19 +55,19 @@ export default function VoiceSettingsPanel({
     customModel || (!!value.modelId && !isKnownModel) || value.provider === "fishaudio";
 
   return (
-    <div className="border-t border-border pt-6 space-y-5">
-      <div>
-        <h3 className="text-xl font-semibold text-white">AI33 Hang Beállítások</h3>
-        <p className="mt-1 text-sm text-muted">
+    <FormSection
+      title="AI33 hangbeállítások"
+      description={
+        <>
           Válassz szolgáltatót és hangot. A minták a library preview URL-jéből jönnek (ingyenes).
-        </p>
-        {ai33Available === false && (
-          <p className="mt-1.5 text-xs text-danger">
-            AI33 fiók jelenleg nem elérhető (elfogyott kredit vagy szolgáltatás-kiesés).
-          </p>
-        )}
-      </div>
-
+          {ai33Available === false && (
+            <span className="mt-1.5 block text-danger">
+              AI33 fiók jelenleg nem elérhető (elfogyott kredit vagy szolgáltatás-kiesés).
+            </span>
+          )}
+        </>
+      }
+    >
       {providerDegraded && (
         <div className="rounded-[var(--radius)] border border-danger/30 bg-danger-muted px-4 py-3 text-sm text-ink">
           {PROVIDER_HEALTH_LABEL[value.provider]} jelenleg{" "}
@@ -269,6 +270,6 @@ export default function VoiceSettingsPanel({
         onRunPlayground={playground.runPlayground}
         onPlaybackStart={preview.stopPreview}
       />
-    </div>
+    </FormSection>
   );
 }
