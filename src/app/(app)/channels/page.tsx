@@ -1,18 +1,31 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/utils/supabase/server";
-import { Button, EmptyState } from "@/components/ui";
+import { Button, EmptyState, ErrorState } from "@/components/ui";
+import { dbErrorMessage } from "@/lib/errors";
 
 export const revalidate = 0;
 
 export default async function ChannelsPage() {
   const user = await requireUser();
   const supabase = await createClient();
-  const { data: channels } = await supabase
+  const { data: channels, error } = await supabase
     .from("channels")
     .select("id, name, language, ai33_voice_settings, text_model, image_model")
     .eq("user_id", user.id)
     .order("name");
+
+  if (error) {
+    console.error("[channels]", error);
+    return (
+      <main className="mx-auto max-w-4xl px-4 md:px-8 py-16">
+        <ErrorState
+          title="A csatornák nem tölthetők be"
+          description={dbErrorMessage(error, "Nem sikerült betölteni a csatornáidat.")}
+        />
+      </main>
+    );
+  }
 
   const list = channels || [];
 

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { logout } from "@/app/auth/actions";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui";
+import ConnectionStatus from "@/components/ConnectionStatus";
 import { FOCUS_RING } from "@/lib/ui-tokens";
 
 const NAV = [
@@ -98,6 +99,7 @@ export default function AppShell({
           </div>
         </div>
       </header>
+      <ConnectionStatus />
       <div className="flex-1">{children}</div>
     </div>
   );

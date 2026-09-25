@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/utils/supabase/server";
 import ProgressView from "./ProgressView";
+import { ErrorState } from "@/components/ui";
+import { dbErrorMessage } from "@/lib/errors";
 
 export const revalidate = 0;
 
@@ -15,20 +17,35 @@ export default async function ProjectProgressPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: project } = await supabase
+  const { data: project, error } = await supabase
     .from("video_projects")
     .select("id, title, status, created_at, updated_at, generation_cost_usd, channels(name)")
     .eq("id", id)
     .eq("user_id", user.id)
     .maybeSingle();
 
+  if (error) {
+    console.error("[progress]", error);
+    return (
+      <main className="mx-auto max-w-3xl px-4 md:px-8 py-16">
+        <ErrorState
+          title="A projekt nem tölthető be"
+          description={dbErrorMessage(error, "Nem sikerült betölteni a projektet.")}
+        />
+      </main>
+    );
+  }
+
   if (!project) notFound();
 
-  const { data: logs } = await supabase
+  // Missing logs are not fatal — the view live-updates and the header still works.
+  const { data: logs, error: logsError } = await supabase
     .from("generation_logs")
     .select("*")
     .eq("project_id", id)
     .order("created_at", { ascending: true });
+
+  if (logsError) console.error("[progress] logs query failed", logsError);
 
   const channelName = Array.isArray((project as any).channels)
     ? (project as any).channels[0]?.name

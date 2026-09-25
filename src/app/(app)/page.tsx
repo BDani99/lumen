@@ -3,6 +3,8 @@ import { createClient } from "@/utils/supabase/server";
 import NewVideoButton from "./NewVideoButton";
 import ProjectTable from "./ProjectTable";
 import { EmptyState } from "@/components/ui";
+import { ErrorState } from "@/components/ui";
+import { dbErrorMessage } from "@/lib/errors";
 import Link from "next/link";
 import { Button } from "@/components/ui";
 
@@ -12,7 +14,7 @@ export default async function Dashboard() {
   const user = await requireUser();
   const supabase = await createClient();
 
-  const { data: projects } = await supabase
+  const { data: projects, error: projectsError } = await supabase
     .from("video_projects")
     .select(
       "id, title, status, created_at, updated_at, is_flagged, thumbnail_url, generated_script, generation_cost_usd, timeline_data, pipeline, channels(name)"
@@ -21,12 +23,25 @@ export default async function Dashboard() {
     .order("created_at", { ascending: false })
     .limit(10);
 
-  const { data: channels } = await supabase
+  const { data: channels, error: channelsError } = await supabase
     .from("channels")
     .select(
       "id, name, video_generation_defaults, image_model, sentences_per_image, ai33_voice_settings, text_model, polish_model"
     )
     .eq("user_id", user.id);
+
+  if (projectsError || channelsError) {
+    const loadError = projectsError ?? channelsError;
+    console.error("[dashboard]", loadError);
+    return (
+      <main className="mx-auto max-w-6xl px-4 md:px-8 py-16">
+        <ErrorState
+          title="A projektek nem tölthetők be"
+          description={dbErrorMessage(loadError, "Nem sikerült betölteni a projektjeidet.")}
+        />
+      </main>
+    );
+  }
 
   const list = projects || [];
   const channelList = channels || [];
