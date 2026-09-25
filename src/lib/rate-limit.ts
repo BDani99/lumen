@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { apiError } from "@/lib/api-response";
+import { RATE_LIMIT_MESSAGE } from "@/lib/errors";
 import { supabaseAdmin } from "@/lib/supabase";
 
 export type RateLimitCheck = {
@@ -51,8 +52,9 @@ export async function checkRateLimit(opts: RateLimitCheck): Promise<RateLimitRes
 }
 
 export function rateLimitResponse(retryAfterSeconds: number) {
-  return NextResponse.json(
-    { error: "Túl sok kérés — próbáld újra később." },
-    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
-  );
+  // The browser-side apiFetch turns the Retry-After header into "(kb. N perc múlva)".
+  return apiError(RATE_LIMIT_MESSAGE, 429, {
+    code: "rate_limited",
+    headers: { "Retry-After": String(retryAfterSeconds) },
+  });
 }
