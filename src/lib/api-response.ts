@@ -100,6 +100,12 @@ export function routeError(err: unknown, tag: string, opts: { fallback?: string 
   }
 
   const status = statusOf(err);
+  if (err && typeof err === "object" && (err as { code?: unknown }).code === "42501") {
+    // Server code runs as service_role; a permission error almost always means the wrong key is configured.
+    console.error(
+      `[${tag}] ref=${ref} hint: permission denied for a server-side query — check that SUPABASE_SERVICE_ROLE_KEY holds the project's secret/service_role key, not the anon/publishable key`
+    );
+  }
   if (status === 429) {
     return apiError(RATE_LIMIT_MESSAGE, 429, { code: "rate_limited" });
   }
