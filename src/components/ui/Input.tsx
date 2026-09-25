@@ -12,7 +12,7 @@ const sizeClass: Record<Size, string> = {
  * against it (no ring-offset) — an offset would leave a gap that reads as a
  * second, disconnected outline around the field. */
 const fieldClass =
-  "w-full rounded-[var(--radius)] border border-border bg-bg-elevated text-ink placeholder:text-muted/70 transition-colors focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-50";
+  "w-full rounded-[var(--radius)] border border-border bg-bg-elevated text-ink placeholder:text-muted/70 transition-colors focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-50 aria-invalid:border-danger aria-invalid:focus:border-danger aria-invalid:focus:ring-danger/40";
 
 export function Input({
   className,

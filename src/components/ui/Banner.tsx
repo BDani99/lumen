@@ -23,7 +23,7 @@ export function Banner({
 }) {
   return (
     <div
-      role="status"
+      role={tone === "error" ? "alert" : "status"}
       className={cn(
         "rounded-[var(--radius-panel)] border px-4 py-3 text-sm animate-lumen-in",
         tones[tone],
