@@ -1,62 +1,32 @@
 import Link from "next/link";
-import { login } from "@/app/auth/actions";
-import { Banner, Button, Input, Label } from "@/components/ui";
+import { AUTH_LINK_CLASS, AuthShell } from "@/components/auth/AuthShell";
+import { LoginForm } from "@/components/auth/LoginForm";
+import { NOTICES, isNoticeCode } from "@/lib/notices";
 import { safeNext } from "@/lib/safe-next";
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ message?: string; next?: string }>;
+  searchParams: Promise<{ notice?: string; next?: string }>;
 }) {
-  const { message, next } = await searchParams;
-  const nextPath = safeNext(next);
-  const isSuccess =
-    message?.toLowerCase().includes("sikeres") ||
-    message?.toLowerCase().includes("erősítsd");
+  const { notice, next } = await searchParams;
+  // Only known codes are rendered — never free text from the URL.
+  const noticeData = isNoticeCode(notice) ? NOTICES[notice] : undefined;
 
   return (
-    <main className="app-layer relative min-h-screen flex flex-col items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md animate-lumen-in">
-        <div className="mb-10 text-center">
-          <p className="font-display text-4xl md:text-5xl tracking-tight text-ink mb-3">Lumen</p>
-          <h1 className="text-lg text-ink font-medium">Jelentkezz be</h1>
-          <p className="mt-1.5 text-sm text-muted">Folytasd a videóid generálását</p>
-        </div>
-
-        <form className="space-y-4 rounded-[var(--radius-panel)] border border-border bg-bg-elevated/80 p-6 md:p-8">
-          <input type="hidden" name="next" value={nextPath} />
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" autoComplete="email" required />
-          </div>
-          <div>
-            <Label htmlFor="password">Jelszó</Label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-            />
-          </div>
-          <Button formAction={login} type="submit" className="w-full">
-            Bejelentkezés
-          </Button>
-          {message && (
-            <Banner tone={isSuccess ? "success" : "error"}>{message}</Banner>
-          )}
-        </form>
-
-        <p className="mt-6 text-center text-sm text-muted">
+    <AuthShell
+      title="Jelentkezz be"
+      subtitle="Folytasd a videóid generálását"
+      footer={
+        <>
           Nincs fiókod?{" "}
-          <Link
-            href="/register"
-            className="rounded-[var(--radius)] text-accent hover:text-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
-          >
+          <Link href="/register" className={AUTH_LINK_CLASS}>
             Regisztráció
           </Link>
-        </p>
-      </div>
-    </main>
+        </>
+      }
+    >
+      <LoginForm next={safeNext(next)} notice={noticeData} />
+    </AuthShell>
   );
 }
