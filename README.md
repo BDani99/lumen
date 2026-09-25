@@ -1,6 +1,6 @@
 # Lumen
 
-**AI-alapú YouTube videógeneráló** — egy témából vagy saját forgatókönyvből teljes, elkészült videót épít: szöveg → narráció → jelenetképek/videóklipek → export, csatorna-alapú munkafolyamatban.
+**AI-alapú videógeneráló** — egy témából vagy saját forgatókönyvből teljes, elkészült videót épít: szöveg → narráció → jelenetképek/videóklipek → export, csatorna-alapú munkafolyamatban.
 
 Adj meg egy címet és (opcionálisan) egy hosszúságot egy csatornához — Lumen megírja a forgatókönyvet, felolvastatja egy AI hanggal, minden mondathoz/jelenethez legyárt egy képet vagy videóklipet (AI-generálással vagy ingyenes stock médiával), majd exportálható formában (DaVinci Resolve-kompatibilis FCPXML + médiacsomag) adja vissza. Minden lépés valós idejű állapotkövetéssel, hibatűréssel (megszakadt futás folytatható) és előzetes költségbecsléssel fut.
 
@@ -85,6 +85,7 @@ Másold a `.env.example`-t `.env.local`-ra, és töltsd ki. 🔒 = titkos, soha 
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | igen | A Supabase projekt URL-je. Publikus (kliens oldalon is használt). |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | igen | Publikus anon kulcs — RLS mögött biztonságos, kliens oldalon is használt. |
+| `NEXT_PUBLIC_SITE_URL` | nem | Az alkalmazás publikus címe (pl. `https://lumen.example.com`) — a jelszó-visszaállító és megerősítő emailek linkjeihez. Ha üres, a Vercel production domain, majd a kérés hostja szolgál tartalékként. |
 | `SUPABASE_SERVICE_ROLE_KEY` 🔒 | igen | Teljes DB-hozzáférés, megkerüli az RLS-t. **Csak szerver oldalon** használt. Soha ne oszd meg, rotáld azonnal, ha kiszivárgott. |
 
 ### AI / média
@@ -177,28 +178,46 @@ Forrás / részletek:
 ## Supabase beállítás
 
 1. Hozz létre egy új Supabase projektet.
-2. Futtasd le a `supabase/migrations/*.sql` fájlokat **fájlnév szerinti sorrendben** — a Supabase CLI-vel (`supabase db push`) vagy a Dashboard SQL Editorában egyesével. A migrációk létrehozzák a teljes séma + RLS szabályokat.
+2. **Új, üres projekthez** futtasd le egyszer a [`supabase/schema.sql`](supabase/schema.sql) fájlt a Dashboard SQL Editorában. Ez a teljes séma: táblák, indexek, RLS szabályok, triggerek, realtime és API-jogosultságok. Egy **már létező** adatbázist a `supabase/migrations/*.sql` fájlokkal léptess tovább, fájlnév szerinti sorrendben (`supabase db push` vagy egyesével). A migrációk csak a változásokat tartalmazzák, az alap táblákat (`channels`, `video_projects`, `video_scenes`) nem hozzák létre, ezért üres adatbázison önmagukban nem elegendők.
 3. Dashboard → Authentication → Providers: kapcsold be az **Email** providert.
 4. Fejlesztéshez ajánlott: Authentication beállításoknál kapcsold ki a **Confirm email**-t, különben regisztráció után email-megerősítés kell, mielőtt be lehetne lépni.
-5. Authentication → URL Configuration → Site URL: `http://localhost:3000` fejlesztéshez (+ a production Vercel domain, ha már van).
+5. Authentication → URL Configuration → Site URL: `http://localhost:3000` fejlesztéshez (+ a production Vercel domain, ha már van). A **Redirect URLs** listába vedd fel a `<domain>/auth/callback` címet is (localhost és production), különben a jelszó-visszaállító és megerősítő linkek nem működnek.
 6. Ha egy már működő, egyfelhasználós telepítésből nyitod meg az alkalmazást több felhasználó felé: a meglévő kiejtési szótárak tulajdonos nélkül maradnának (a TTS API oldalán nincs user mező) — futtasd le egyszer:
    ```powershell
    npx tsx --env-file=.env.local scripts/backfill-dictionary-owners.ts <a-te-supabase-user-uuid-od> --confirm
    ```
 
-Regisztráció: `/register` · Bejelentkezés: `/login` · Fiók / jelszócsere: `/account`.
+Regisztráció: `/register` · Bejelentkezés: `/login` · Elfelejtett jelszó: `/forgot-password` · Fiók / jelszócsere: `/account`.
+
+A jelszó legalább 8 karakter (legfeljebb 72 bájt), tartalmaz betűt és számot, nem szerepel a gyakori jelszavak között, és nem az email címből áll — ugyanez a szabály fut a böngészőben (erősségjelző) és a szerveren (kikényszerítés). Érdemes a Supabase Dashboard → Authentication → Providers → Email alatt a **Leaked password protection** opciót is bekapcsolni.
+
+---
+
+## Hibakezelés
+
+Minden hiba magyar, felhasználóbarát szöveggel jelenik meg — nyers kivételszöveg (adatbázis-, szolgáltatói hibaüzenet) soha nem kerül a képernyőre.
+
+- `src/lib/errors.ts` — központi magyar üzenetek, hálózati/időtúllépési hibák felismerése, Supabase auth- és adatbázis-hibák leképezése.
+- `src/lib/api-response.ts` — szerver oldali `apiError` / `routeError`: egységes `{ error, code?, ref? }` válasz; a valódi hiba a szerverlogba kerül egy rövid `ref` kóddal.
+- `src/lib/api-client.ts` — böngésző oldali `apiFetch` / `getErrorMessage`: hálózat, időtúllépés, lejárt munkamenet (401 → bejelentkezés), rate limit és nem-JSON válaszok kezelése.
+- `error.tsx` / `global-error.tsx` — váratlan hibák hibakóddal (digest) és újrapróbálással; a szerver oldali oldalak lekérdezési hibái `ErrorState`-tel jelennek meg.
+- Ha a Supabase környezeti változók hiányoznak vagy az auth szolgáltatás nem elérhető, a felhasználó erről magyar üzenetet kap, a szerverlog pedig megnevezi a hiányzó változót.
 
 ---
 
 ## Deployment (Vercel + Inngest Cloud)
 
 1. Deployold a projektet Vercelre.
-2. Állítsd be a [Környezeti változók](#környezeti-változók) táblázatában felsorolt összes szükséges kulcsot a Vercel projekt Settings → Environment Variables alatt.
+2. Állítsd be a [Környezeti változók](#környezeti-változók) táblázatában felsorolt összes szükséges kulcsot a Vercel projekt Settings → Environment Variables alatt. A `NEXT_PUBLIC_*` változókat **Config** (nem Secret) típussal vedd fel: a Vercel nem engedi titkosként a böngészőbe kerülő értékeket. A `SUPABASE_SERVICE_ROLE_KEY` és az R2/API kulcsok maradjanak Secret-ek. A `NEXT_PUBLIC_*` értékek build közben kerülnek a kódba, változtatás után újra kell deployolni.
 3. Telepítsd az [Inngest Vercel integration](https://vercel.com/integrations/inngest)-et — ez automatikusan beállítja az `INNGEST_SIGNING_KEY` / `INNGEST_EVENT_KEY` változókat.
 4. **Ne** állítsd be az `INNGEST_DEV`-et Production/Preview környezetben.
 5. Ha Vercel Deployment Protection be van kapcsolva, az Inngesthez Protection Bypass szükséges (lásd az Inngest Vercel dokumentációját).
 
 Új deploy után az Inngest Cloud automatikusan szinkronizálja a `/api/inngest` funkciókat.
+
+**Több telepítés ugyanabból a kódból:** minden telepítésnek legyen saját Supabase projektje, R2 bucketje és Inngest appja. Közösen használva az adatok keverednének, az egyik telepítés takarító feladata a másik médiáját is törölné, az Inngest szinkron pedig átállíthatná a másik telepítés háttérfeladatait.
+
+**Hibakeresés:** ha bejelentkezéskor a felhasználó a "Nem sikerült kapcsolódni a szerverhez" vagy az "A szolgáltatás nincs megfelelően beállítva" üzenetet látja, a Vercel → Logs alatt a `Supabase is not configured — missing env: …` sor megnevezi a hiányzó változót. Ha a változók megvannak, ellenőrizd, hogy a legutóbbi deploy újabb-e náluk, és hogy a Supabase projekt nem szünetel-e.
 
 ---
 
