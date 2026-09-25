@@ -27,6 +27,7 @@ export function VoiceListGrid({
   loadingMore,
   hasMore,
   error,
+  onRetry,
   onLoadMore,
   playingId,
   onPlayPreview,
@@ -51,6 +52,8 @@ export function VoiceListGrid({
   loadingMore: boolean;
   hasMore: boolean;
   error: string | null;
+  /** Reloads the first page after a failed load. */
+  onRetry?: () => void;
   onLoadMore: () => void;
   playingId: string | null;
   onPlayPreview: (voice: VoiceItem) => void;
@@ -132,12 +135,28 @@ export function VoiceListGrid({
               ? `${filteredVoices.length} találat a betöltött ${voices.length} hangból`
               : `${total.toLocaleString("hu-HU")} hang`}
         </span>
-        {error && <span className="text-danger">{error}</span>}
+        {error && voices.length > 0 && <span className="text-danger">{error}</span>}
       </div>
 
       <div className="max-h-[28rem] overflow-y-auto pr-1">
         {loading && voices.length === 0 ? (
           <div className="py-12 text-center text-sm text-muted">Hangok betöltése…</div>
+        ) : error && voices.length === 0 ? (
+          <div role="alert" className="py-12 text-center text-sm">
+            <p className="text-danger">{error}</p>
+            <p className="mt-1 text-xs text-muted">
+              A Voice ID-t ettől függetlenül megadhatod kézzel alább.
+            </p>
+            {onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="mt-3 cursor-pointer rounded-[var(--radius)] border border-accent/25 bg-accent-muted px-4 py-2 text-sm text-ink hover:bg-accent/25"
+              >
+                Újrapróbálás
+              </button>
+            )}
+          </div>
         ) : filteredVoices.length === 0 ? (
           <div className="py-12 text-center text-sm text-muted">
             {listFiltersActive

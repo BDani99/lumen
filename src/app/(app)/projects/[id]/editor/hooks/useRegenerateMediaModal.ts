@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch, getErrorMessage, isAbortError } from "@/lib/api-client";
 import { imageCostForModelOption, videoClipCost } from "@/lib/cost-estimate";
 import {
   clampResolutionForVideoModel,
@@ -45,6 +46,7 @@ export function useRegenerateMediaModal({
   );
   const [regenOpen, setRegenOpen] = useState(false);
   const [regenBusy, setRegenBusy] = useState(false);
+  const [regenError, setRegenError] = useState<string | null>(null);
   const [regenMediaMode, setRegenMediaMode] = useState<MediaMode>(opts0.mediaMode);
   const [regenImageModel, setRegenImageModel] = useState(
     channel?.image_model || "gpt-image-2 low"
@@ -116,17 +118,18 @@ export function useRegenerateMediaModal({
     setRegenIntroVideoCount(opts.introVideoCount);
     setRegenMaxVideoScenes(opts.maxVideoScenes);
     setRegenThumbnail(thumbExpired);
+    setRegenError(null);
     setRegenOpen(true);
   };
 
   const handleRegenerateMedia = async () => {
     setRegenBusy(true);
+    setRegenError(null);
     setEditorError(null);
     try {
-      const res = await fetch(`/api/projects/${project.id}/regenerate-media`, {
+      await apiFetch(`/api/projects/${project.id}/regenerate-media`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        json: {
           mediaMode: regenMediaMode,
           imageModel: regenImageModel,
           videoModel: regenVideoModel,
@@ -139,16 +142,17 @@ export function useRegenerateMediaModal({
           introVideoCount: regenIntroVideoCount,
           maxVideoScenes: regenMaxVideoScenes,
           regenThumbnail,
-        }),
+        },
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Újragenerálás indítása sikertelen");
-      }
       setRegenOpen(false);
       router.push(`/projects/${project.id}/progress`);
-    } catch (e: any) {
-      setEditorError(e.message || "Újragenerálás sikertelen");
+    } catch (e: unknown) {
+      if (isAbortError(e)) {
+        setRegenBusy(false);
+        return;
+      }
+      // Shown inside the modal — the editor-level banner sits behind its overlay.
+      setRegenError(getErrorMessage(e, "A média újragenerálását nem sikerült elindítani. Próbáld újra."));
       setRegenBusy(false);
     }
   };
@@ -157,6 +161,7 @@ export function useRegenerateMediaModal({
     regenOpen,
     setRegenOpen,
     regenBusy,
+    regenError,
     regenMediaMode,
     setRegenMediaMode,
     regenImageModel,

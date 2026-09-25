@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Banner, Button, ConfirmDialog, Input, Label, Select } from "@/components/ui";
+import { Banner, Button, ConfirmDialog, ErrorState, Input, Label, Select } from "@/components/ui";
 import { useConfirm } from "@/hooks/useConfirm";
+import { apiFetch, getErrorMessage } from "@/lib/api-client";
 
 interface DictionaryRule {
   from: string;
@@ -24,6 +25,7 @@ export default function DictionariesManager() {
   const [dictionaries, setDictionaries] = useState<Dictionary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
   const [formName, setFormName] = useState("");
@@ -38,14 +40,12 @@ export default function DictionariesManager() {
 
   const fetchDictionaries = async () => {
     setLoading(true);
-    setError(null);
+    setLoadError(null);
     try {
-      const res = await fetch("/api/dictionaries");
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Nem sikerült betölteni a szótárakat.");
-      setDictionaries(Array.isArray(data.dictionaries) ? data.dictionaries : []);
-    } catch (e: any) {
-      setError(e.message || "Hiba a szótárak betöltésekor.");
+      const data = await apiFetch<{ dictionaries?: Dictionary[] }>("/api/dictionaries");
+      setDictionaries(Array.isArray(data?.dictionaries) ? data.dictionaries : []);
+    } catch (e) {
+      setLoadError(getErrorMessage(e, "Nem sikerült betölteni a szótárakat."));
     } finally {
       setLoading(false);
     }
@@ -105,17 +105,14 @@ export default function DictionariesManager() {
     setSaving(true);
     try {
       const isNew = editingId === "new";
-      const res = await fetch(isNew ? "/api/dictionaries" : `/api/dictionaries/${editingId}`, {
+      await apiFetch(isNew ? "/api/dictionaries" : `/api/dictionaries/${editingId}`, {
         method: isNew ? "POST" : "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, rules }),
+        json: { name, rules },
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Mentés sikertelen.");
       setEditingId(null);
       await fetchDictionaries();
-    } catch (e: any) {
-      setFormError(e.message || "Mentés sikertelen.");
+    } catch (e) {
+      setFormError(getErrorMessage(e, "A szótárat nem sikerült menteni."));
     } finally {
       setSaving(false);
     }
@@ -129,14 +126,13 @@ export default function DictionariesManager() {
       confirmLabel: "Törlés",
     });
     if (!ok) return;
+    setError(null);
     try {
-      const res = await fetch(`/api/dictionaries/${id}`, { method: "DELETE" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Törlés sikertelen.");
+      await apiFetch(`/api/dictionaries/${id}`, { method: "DELETE" });
       if (editingId === id) setEditingId(null);
       await fetchDictionaries();
-    } catch (e: any) {
-      setError(e.message || "Törlés sikertelen.");
+    } catch (e) {
+      setError(getErrorMessage(e, "A szótárat nem sikerült törölni."));
     }
   };
 
@@ -152,16 +148,13 @@ export default function DictionariesManager() {
     setPreviewBusy(true);
     setPreviewOutput(null);
     try {
-      const res = await fetch("/api/dictionaries/preview", {
+      const data = await apiFetch<{ output?: string }>("/api/dictionaries/preview", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: previewText, rules }),
+        json: { text: previewText, rules },
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Előnézet sikertelen.");
-      setPreviewOutput(data.output ?? previewText);
-    } catch (e: any) {
-      setPreviewError(e.message || "Előnézet sikertelen.");
+      setPreviewOutput(data?.output ?? previewText);
+    } catch (e) {
+      setPreviewError(getErrorMessage(e, "Az előnézetet nem sikerült elkészíteni."));
     } finally {
       setPreviewBusy(false);
     }
@@ -245,7 +238,7 @@ export default function DictionariesManager() {
                 placeholder="Mintaszöveg a szabályokkal…"
                 className="flex-1"
               />
-              <Button type="button" variant="secondary" disabled={previewBusy} onClick={runPreview}>
+              <Button type="button" variant="secondary" loading={previewBusy} onClick={runPreview}>
                 {previewBusy ? "…" : "Előnézet"}
               </Button>
             </div>
@@ -261,7 +254,7 @@ export default function DictionariesManager() {
             <Button variant="ghost" onClick={closeForm} disabled={saving}>
               Mégsem
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button onClick={handleSave} loading={saving}>
               {saving ? "Mentés…" : "Mentés"}
             </Button>
           </div>
@@ -270,6 +263,12 @@ export default function DictionariesManager() {
 
       {loading ? (
         <p className="text-sm text-muted">Betöltés…</p>
+      ) : loadError ? (
+        <ErrorState
+          title="Nem sikerült betölteni a szótárakat"
+          description={loadError}
+          action={<Button onClick={fetchDictionaries}>Újrapróbálás</Button>}
+        />
       ) : dictionaries.length === 0 ? (
         <p className="text-sm text-muted">Még nincs kiejtési szótár.</p>
       ) : (

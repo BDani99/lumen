@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { isAbortError } from "@/lib/api-client";
 import {
   buildVisualTimeline,
   findSegmentAt,
@@ -28,6 +29,8 @@ export function useTimelinePlayback({
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  /** Set when the narration audio fails to load or refuses to play. */
+  const [audioError, setAudioError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   // Preview videos are kept mounted per timeline-segment index (see the
   // preview stack below) so advancing a clip never remounts an element.
@@ -44,16 +47,42 @@ export function useTimelinePlayback({
 
   const handleLoadedMetadata = () => {
     if (audioRef.current) setDuration(audioRef.current.duration || 0);
+    setAudioError(null);
   };
 
-  const handlePlayPause = () => {
-    if (!audioRef.current) return;
-    if (isPlaying) audioRef.current.pause();
-    else audioRef.current.play();
-    setIsPlaying(!isPlaying);
+  const handlePlayPause = async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+      return;
+    }
+    setIsPlaying(true);
+    try {
+      await audio.play();
+      setAudioError(null);
+    } catch (err) {
+      // play() is interrupted (AbortError) when pause() or a new load() follows
+      // right after — that is not a failure.
+      if (isAbortError(err)) return;
+      setIsPlaying(false);
+      const name = (err as { name?: string } | null)?.name;
+      setAudioError(
+        name === "NotAllowedError"
+          ? "A böngésző letiltotta a lejátszást. Kattints újra a lejátszás gombra."
+          : "A narráció hangja nem játszható le."
+      );
+    }
   };
 
   const handleEnded = () => setIsPlaying(false);
+
+  /** The <audio> element itself failed (missing/expired file, network, unsupported format). */
+  const handleAudioError = () => {
+    setIsPlaying(false);
+    setAudioError("A narráció hangja nem tölthető be. Frissítsd az oldalt, vagy generáld újra a hangot.");
+  };
 
   const activeLookup = findSegmentAt(visualTimeline.segments, currentTime);
   const activeSegment = activeLookup?.segment ?? null;
@@ -94,6 +123,9 @@ export function useTimelinePlayback({
       }
     }
     if (isPlaying) {
+      // Background sync of a muted preview clip: if the browser refuses, the
+      // clip just stays on its first frame — the media hint in the player covers
+      // load failures, so no extra message here.
       el.play().catch(() => {});
     } else {
       el.pause();
@@ -141,5 +173,7 @@ export function useTimelinePlayback({
     handleLoadedMetadata,
     handlePlayPause,
     handleEnded,
+    handleAudioError,
+    audioError,
   };
 }

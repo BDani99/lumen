@@ -1,31 +1,39 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { apiFetch, getErrorMessage, isAbortError } from "@/lib/api-client";
 import type { NamePoolPreset } from "@/lib/name-pools";
 
 /** Fetches the user's saved name-pool presets and resolves the selected one. */
 export function useNamePoolPresets(namePoolPresetId: string) {
   const [namePoolPresets, setNamePoolPresets] = useState<NamePoolPreset[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     (async () => {
       try {
-        const res = await fetch("/api/name-pool-presets");
-        const data = await res.json().catch(() => ({}));
-        if (!cancelled && res.ok) {
-          setNamePoolPresets(Array.isArray(data.presets) ? data.presets : []);
-        }
-      } catch {
-        /* preset list is optional — the selector just stays empty */
+        const data = await apiFetch<{ presets?: NamePoolPreset[] }>("/api/name-pool-presets", {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        setNamePoolPresets(Array.isArray(data?.presets) ? data.presets : []);
+        setError(null);
+      } catch (e) {
+        if (isAbortError(e) || controller.signal.aborted) return;
+        setError(getErrorMessage(e, "A névkészletek listáját nem sikerült betölteni."));
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
+  }, [attempt]);
+
+  const retry = useCallback(() => {
+    setError(null);
+    setAttempt((n) => n + 1);
   }, []);
 
   const selectedNamePoolPreset = namePoolPresets.find((p) => p.id === namePoolPresetId) || null;
 
-  return { namePoolPresets, selectedNamePoolPreset };
+  return { namePoolPresets, selectedNamePoolPreset, error, retry };
 }

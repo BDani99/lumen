@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { apiFetch, getErrorMessage, isAbortError } from "@/lib/api-client";
 import { getSceneMotionClips, type MotionClipsByScene } from "@/lib/motion-clips";
 
 /**
@@ -55,11 +56,10 @@ export function useSceneMutations({
     });
 
     try {
-      const results = await Promise.all([
-        fetch("/api/scenes", {
+      await Promise.all([
+        apiFetch("/api/scenes", {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+          json: {
             sceneId: scene1.id,
             update: {
               image_url: scene2.image_url,
@@ -67,12 +67,11 @@ export function useSceneMutations({
               image_prompt: scene2.image_prompt,
               effect: scene2.effect,
             },
-          }),
+          },
         }),
-        fetch("/api/scenes", {
+        apiFetch("/api/scenes", {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+          json: {
             sceneId: scene2.id,
             update: {
               image_url: tempImage,
@@ -80,16 +79,16 @@ export function useSceneMutations({
               image_prompt: tempPrompt,
               effect: tempEffect,
             },
-          }),
+          },
         }),
       ]);
-      if (results.some((r) => !r.ok)) {
-        throw new Error("A jelenetek cseréje nem mentődött el.");
-      }
-    } catch (e: any) {
+    } catch (e: unknown) {
+      if (isAbortError(e)) return;
       console.error("Swap failed", e);
       setScenes(() => prevScenes);
-      setEditorError(e?.message || "Jelenetcsere sikertelen — a változás visszavonva.");
+      setEditorError(
+        getErrorMessage(e, "A jelenetek cseréje nem mentődött el — a változás visszavonva.")
+      );
     }
   };
 
@@ -97,40 +96,31 @@ export function useSceneMutations({
     const prevScenes = scenes;
     setScenes((prev) => prev.map((s) => (s.id === sceneId ? { ...s, effect } : s)));
     try {
-      const res = await fetch("/api/scenes", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sceneId, update: { effect } }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Effekt mentése sikertelen.");
-      }
-    } catch (e: any) {
+      await apiFetch("/api/scenes", { method: "PATCH", json: { sceneId, update: { effect } } });
+    } catch (e: unknown) {
+      if (isAbortError(e)) return;
       console.error("Effect save failed", e);
       setScenes(() => prevScenes);
-      setEditorError(e?.message || "Effekt mentése sikertelen — a változás visszavonva.");
+      setEditorError(getErrorMessage(e, "Az effekt mentése nem sikerült — a változás visszavonva."));
     }
   };
 
   const handleRegenerate = async (sceneId: string, prompt: string) => {
     setRegeneratingSceneId(sceneId);
+    setEditorError(null);
     try {
-      const res = await fetch("/api/scenes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sceneId, prompt }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || "Jelenet újragenerálása sikertelen.");
-      }
+      const data =
+        (await apiFetch<any>("/api/scenes", {
+          method: "POST",
+          json: { sceneId, prompt },
+        })) ?? {};
       if (data.scene) {
         setScenes((prev) => prev.map((s) => (s.id === sceneId ? data.scene : s)));
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
+      if (isAbortError(e)) return;
       console.error("Regeneration failed", e);
-      setEditorError(e?.message || "Jelenet újragenerálása sikertelen.");
+      setEditorError(getErrorMessage(e, "A jelenet újragenerálása nem sikerült. Próbáld újra."));
     } finally {
       setRegeneratingSceneId(null);
     }
@@ -141,15 +131,12 @@ export function useSceneMutations({
     setRegeneratingClipKey(key);
     setEditorError(null);
     try {
-      const res = await fetch("/api/scenes/regenerate-clip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sceneId, clipIndex, narration }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || "Klip újragenerálása sikertelen.");
-      }
+      // No client timeout: clip regeneration may legitimately run for minutes.
+      const data =
+        (await apiFetch<any>("/api/scenes/regenerate-clip", {
+          method: "POST",
+          json: { sceneId, clipIndex, narration },
+        })) ?? {};
       const scene = scenes.find((s) => s.id === sceneId);
       if (scene) {
         const orderKey = String(scene.scene_order ?? "");
@@ -175,9 +162,10 @@ export function useSceneMutations({
           prev.map((s) => (s.id === sceneId ? { ...s, video_url: data.sceneVideoUrl } : s))
         );
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
+      if (isAbortError(e)) return;
       console.error("Clip regeneration failed", e);
-      setEditorError(e?.message || "Klip újragenerálása sikertelen.");
+      setEditorError(getErrorMessage(e, "A klip újragenerálása nem sikerült. Próbáld újra."));
     } finally {
       setRegeneratingClipKey(null);
     }

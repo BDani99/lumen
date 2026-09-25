@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiFetch, getErrorMessage } from "@/lib/api-client";
 import type { VoiceSettingsValue } from "../types";
 
 /**
@@ -32,10 +33,10 @@ export function useVoicePlayground(value: VoiceSettingsValue, stopPreview: () =>
     setPlaygroundAudioUrl(null);
 
     try {
-      const res = await fetch("/api/voices/preview", {
+      // No client timeout: the server allows up to ~120 s for a TTS preview.
+      const data = await apiFetch<{ audioUrl?: string }>("/api/voices/preview", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        json: {
           text,
           voiceId: value.voiceId,
           provider: value.provider,
@@ -43,16 +44,17 @@ export function useVoicePlayground(value: VoiceSettingsValue, stopPreview: () =>
           speed: value.speed,
           language: value.language?.trim() || undefined,
           pronunciationDictionaryId: value.pronunciationDictionaryId || undefined,
-        }),
+        },
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Generálás sikertelen.");
-      if (!data.audioUrl) throw new Error("Nem érkezett hangfájl.");
+      if (!data?.audioUrl) {
+        setPlaygroundError("Nem érkezett hangfájl. Próbáld újra.");
+        return;
+      }
 
       // Only expose the URL — user starts playback via the visible controls.
       setPlaygroundAudioUrl(data.audioUrl);
-    } catch (e: any) {
-      setPlaygroundError(e.message || "Hiba a tesztgeneráláskor.");
+    } catch (e) {
+      setPlaygroundError(getErrorMessage(e, "A teszthangot nem sikerült legenerálni."));
     } finally {
       setPlaygroundBusy(false);
     }

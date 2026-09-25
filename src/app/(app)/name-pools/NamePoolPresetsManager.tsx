@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Banner, Button, ConfirmDialog, Input, Label, Textarea } from "@/components/ui";
+import { Banner, Button, ConfirmDialog, ErrorState, Input, Label, Textarea } from "@/components/ui";
 import { useConfirm } from "@/hooks/useConfirm";
+import { apiFetch, getErrorMessage } from "@/lib/api-client";
 import { formatNameListText, parseNameList, type NamePoolCategoryDef, type NamePoolPreset } from "@/lib/name-pools";
 
 type CategoryForm = { key: string; label: string; promptHint: string; namesText: string };
@@ -23,6 +24,7 @@ export default function NamePoolPresetsManager() {
   const [presets, setPresets] = useState<NamePoolPreset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [formName, setFormName] = useState("");
@@ -33,14 +35,12 @@ export default function NamePoolPresetsManager() {
 
   const fetchPresets = async () => {
     setLoading(true);
-    setError(null);
+    setLoadError(null);
     try {
-      const res = await fetch("/api/name-pool-presets");
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Nem sikerült betölteni a névkészleteket.");
-      setPresets(Array.isArray(data.presets) ? data.presets : []);
-    } catch (e: any) {
-      setError(e.message || "Hiba a névkészletek betöltésekor.");
+      const data = await apiFetch<{ presets?: NamePoolPreset[] }>("/api/name-pool-presets");
+      setPresets(Array.isArray(data?.presets) ? data.presets : []);
+    } catch (e) {
+      setLoadError(getErrorMessage(e, "Nem sikerült betölteni a névkészleteket."));
     } finally {
       setLoading(false);
     }
@@ -98,17 +98,14 @@ export default function NamePoolPresetsManager() {
     setSaving(true);
     try {
       const isNew = editingId === "new";
-      const res = await fetch(isNew ? "/api/name-pool-presets" : `/api/name-pool-presets/${editingId}`, {
+      await apiFetch(isNew ? "/api/name-pool-presets" : `/api/name-pool-presets/${editingId}`, {
         method: isNew ? "POST" : "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, categories, minNamesPerCategory: formMin }),
+        json: { name, categories, minNamesPerCategory: formMin },
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Mentés sikertelen.");
       setEditingId(null);
       await fetchPresets();
-    } catch (e: any) {
-      setFormError(e.message || "Mentés sikertelen.");
+    } catch (e) {
+      setFormError(getErrorMessage(e, "A névkészletet nem sikerült menteni."));
     } finally {
       setSaving(false);
     }
@@ -122,14 +119,13 @@ export default function NamePoolPresetsManager() {
       confirmLabel: "Törlés",
     });
     if (!ok) return;
+    setError(null);
     try {
-      const res = await fetch(`/api/name-pool-presets/${id}`, { method: "DELETE" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Törlés sikertelen.");
+      await apiFetch(`/api/name-pool-presets/${id}`, { method: "DELETE" });
       if (editingId === id) setEditingId(null);
       await fetchPresets();
-    } catch (e: any) {
-      setError(e.message || "Törlés sikertelen.");
+    } catch (e) {
+      setError(getErrorMessage(e, "A névkészletet nem sikerült törölni."));
     }
   };
 
@@ -222,7 +218,7 @@ export default function NamePoolPresetsManager() {
             <Button variant="ghost" onClick={closeForm} disabled={saving}>
               Mégsem
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button onClick={handleSave} loading={saving}>
               {saving ? "Mentés…" : "Mentés"}
             </Button>
           </div>
@@ -231,6 +227,12 @@ export default function NamePoolPresetsManager() {
 
       {loading ? (
         <p className="text-sm text-muted">Betöltés…</p>
+      ) : loadError ? (
+        <ErrorState
+          title="Nem sikerült betölteni a névkészleteket"
+          description={loadError}
+          action={<Button onClick={fetchPresets}>Újrapróbálás</Button>}
+        />
       ) : presets.length === 0 ? (
         <p className="text-sm text-muted">Még nincs névkészlet.</p>
       ) : (

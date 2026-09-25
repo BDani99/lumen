@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Label, Modal, SegmentedTabs, Select } from "@/components/ui";
+import { Banner, Button, Label, Modal, SegmentedTabs, Select } from "@/components/ui";
 import { CostMiniTable } from "@/components/CostMiniTable";
 import { VideoScenePatternFields } from "@/components/VideoScenePatternFields";
 import { formatUsd } from "@/lib/cost-estimate";
@@ -22,6 +22,7 @@ export function RegenerateMediaModal(modal: RegenerateMediaModalState) {
     regenOpen,
     setRegenOpen,
     regenBusy,
+    regenError,
     regenMediaMode,
     setRegenMediaMode,
     regenImageModel,
@@ -240,6 +241,12 @@ export function RegenerateMediaModal(modal: RegenerateMediaModalState) {
         </div>
       </div>
 
+      {regenError && (
+        <Banner tone="error" className="mt-4">
+          {regenError}
+        </Banner>
+      )}
+
       <div className="mt-5 flex justify-end gap-2">
         <Button
           variant="ghost"
@@ -248,7 +255,7 @@ export function RegenerateMediaModal(modal: RegenerateMediaModalState) {
         >
           Mégse
         </Button>
-        <Button disabled={regenBusy} onClick={handleRegenerateMedia}>
+        <Button loading={regenBusy} onClick={handleRegenerateMedia}>
           {regenBusy ? "Indítás…" : "Újragenerálás indítása"}
         </Button>
       </div>

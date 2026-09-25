@@ -6,6 +6,8 @@ import { createClient } from "@/utils/supabase/client";
 import { STATUS_LABELS } from "@/lib/generation-status";
 import { Banner, Button, ConfirmDialog, Input, Modal, Select, StatusBadge, Textarea } from "@/components/ui";
 import { useConfirm } from "@/hooks/useConfirm";
+import { apiFetch, getErrorMessage } from "@/lib/api-client";
+import { dbErrorMessage } from "@/lib/errors";
 import { FOCUS_RING } from "@/lib/ui-tokens";
 import { isPlayableImageUrl } from "@/lib/video-mode";
 import { ProExportButton } from "@/components/pro/ProExportButton";
@@ -16,6 +18,7 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
   const [selectedProject, setSelectedProject] = useState<any | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshFailing, setRefreshFailing] = useState(false);
   const supabase = useMemo(() => createClient(), []);
 
   const [filterTitle, setFilterTitle] = useState("");
@@ -47,12 +50,22 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
   }, [initialProjects]);
 
   useEffect(() => {
+    let failures = 0;
     const interval = setInterval(async () => {
-      const { data } = await supabase
-        .from("video_projects")
-        .select("*, channels(name)")
-        .order("created_at", { ascending: false });
-      if (data) setProjects(data);
+      try {
+        const { data, error: pollError } = await supabase
+          .from("video_projects")
+          .select("*, channels(name)")
+          .order("created_at", { ascending: false });
+        if (pollError || !data) throw pollError ?? new Error("empty");
+        failures = 0;
+        setRefreshFailing(false);
+        setProjects(data);
+      } catch {
+        // Background polling: keep the last good list, warn only after repeated failures.
+        failures += 1;
+        if (failures >= 3) setRefreshFailing(true);
+      }
     }, 5000);
     return () => clearInterval(interval);
   }, [supabase]);
@@ -83,13 +96,20 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
 
   const toggleFlag = async (id: string, currentFlag: boolean) => {
     const newFlag = !currentFlag;
-    setProjects(projects.map((p) => (p.id === id ? { ...p, is_flagged: newFlag } : p)));
-    const { error: err } = await supabase
-      .from("video_projects")
-      .update({ is_flagged: newFlag })
-      .eq("id", id);
-    if (err) {
-      setProjects(projects.map((p) => (p.id === id ? { ...p, is_flagged: currentFlag } : p)));
+    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, is_flagged: newFlag } : p)));
+    let failure: string | null = null;
+    try {
+      const { error: err } = await supabase
+        .from("video_projects")
+        .update({ is_flagged: newFlag })
+        .eq("id", id);
+      if (err) failure = dbErrorMessage(err, "A megjelölést nem sikerült menteni.");
+    } catch (e) {
+      failure = getErrorMessage(e, "A megjelölést nem sikerült menteni.");
+    }
+    if (failure) {
+      setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, is_flagged: currentFlag } : p)));
+      setError(failure);
     }
   };
 
@@ -102,13 +122,12 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
     });
     if (!ok) return;
     try {
-      const res = await fetch(`/api/videos/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Nem sikerült a törlés");
-      setProjects(projects.filter((p) => p.id !== id));
-      if (selectedProject?.id === id) setSelectedProject(null);
+      await apiFetch(`/api/videos/${id}`, { method: "DELETE" });
+      setProjects((prev) => prev.filter((p) => p.id !== id));
+      setSelectedProject((prev: any) => (prev?.id === id ? null : prev));
       setToast("Projekt törölve.");
-    } catch {
-      setError("Hiba történt a törlés során.");
+    } catch (e) {
+      setError(getErrorMessage(e, "A projektet nem sikerült törölni."));
     }
   };
 
@@ -125,9 +144,10 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
     setIsRegeneratingThumbnail(true);
     setError(null);
     try {
-      const res = await fetch(`/api/projects/${projectId}/thumbnail`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Hiba történt");
+      const data = await apiFetch<{ thumbnail_url: string; timeline_data: unknown }>(
+        `/api/projects/${projectId}/thumbnail`,
+        { method: "POST" }
+      );
       setSelectedProject((prev: any) => ({
         ...prev,
         thumbnail_url: data.thumbnail_url,
@@ -141,8 +161,8 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
         )
       );
       setToast("Bélyegkép újragenerálva.");
-    } catch (e: any) {
-      setError(e.message || "Hiba");
+    } catch (e) {
+      setError(getErrorMessage(e, "A bélyegképet nem sikerült újragenerálni."));
     } finally {
       setIsRegeneratingThumbnail(false);
     }
@@ -155,8 +175,11 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
 
   return (
     <>
-      {(toast || error) && (
+      {(toast || error || refreshFailing) && (
         <div className="mb-4 space-y-2">
+          {refreshFailing && (
+            <Banner tone="warning">Nem sikerül frissíteni a listát — újrapróbáljuk.</Banner>
+          )}
           {toast && <Banner tone="success">{toast}</Banner>}
           {error && (
             <Banner tone="error">
@@ -345,7 +368,7 @@ export default function ProjectTable({ initialProjects }: { initialProjects: any
                 <Button
                   variant="secondary"
                   className="!py-1.5 !px-3 text-xs"
-                  disabled={isRegeneratingThumbnail}
+                  loading={isRegeneratingThumbnail}
                   onClick={() => handleRegenerateThumbnail(selectedProject.id)}
                 >
                   {isRegeneratingThumbnail ? "Generálás…" : "Újragenerálás"}

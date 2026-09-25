@@ -1,6 +1,7 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useState, type RefObject } from "react";
+import { Banner } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { isR2DeletedUrl } from "@/lib/video-mode";
 import type { VisualSegment } from "@/lib/motion-clips";
@@ -31,6 +32,8 @@ export function ScenePreviewPlayer({
   handleTimeUpdate,
   handleLoadedMetadata,
   handleEnded,
+  handleAudioError,
+  audioError,
 }: {
   project: any;
   previewWindow: { index: number; segment: VisualSegment }[];
@@ -46,7 +49,17 @@ export function ScenePreviewPlayer({
   handleTimeUpdate: () => void;
   handleLoadedMetadata: () => void;
   handleEnded: () => void;
+  handleAudioError: () => void;
+  audioError: string | null;
 }) {
+  // URLs of preview media the browser could not load — shown as a hint instead
+  // of a silent black area. A regenerated file gets a new URL and so a fresh try.
+  const [failedUrls, setFailedUrls] = useState<ReadonlySet<string>>(new Set());
+  const markFailed = (url: string) =>
+    setFailedUrls((prev) => (prev.has(url) ? prev : new Set(prev).add(url)));
+  const activeSegmentUrl = previewWindow.find((w) => w.index === activeIndex)?.segment.url;
+  const activeMediaFailed = !!activeSegmentUrl && failedUrls.has(activeSegmentUrl);
+
   return (
     <section className="flex flex-col border-b lg:border-b-0 lg:border-r border-border order-1 lg:order-2 min-h-[280px]">
       <div className="flex-1 bg-black flex items-center justify-center p-4 md:p-6 relative min-h-[200px]">
@@ -68,6 +81,7 @@ export function ScenePreviewPlayer({
               preload="auto"
               muted
               playsInline
+              onError={() => markFailed(segment.url)}
               className={cn(
                 "absolute inset-0 w-full h-full object-contain transition-opacity duration-75",
                 index === activeIndex ? "opacity-100 z-10" : "opacity-0 pointer-events-none"
@@ -78,12 +92,25 @@ export function ScenePreviewPlayer({
               key={`seg-${index}-${segment.url}`}
               src={segment.url}
               alt={index === activeIndex ? "Jelenet" : ""}
+              onError={() => markFailed(segment.url)}
               className={cn(
                 "absolute inset-0 w-full h-full object-contain transition-opacity duration-75",
                 index === activeIndex ? "opacity-100 z-10" : "opacity-0 pointer-events-none"
               )}
             />
           )
+        )}
+        {activeMediaFailed && (
+          <div className="absolute inset-0 z-[15] flex items-center justify-center px-4 text-center text-sm text-muted">
+            A média nem tölthető be. Frissítsd az oldalt, vagy generáld újra a médiát.
+          </div>
+        )}
+        {audioError && (
+          <div className="absolute top-3 left-3 right-3 z-20">
+            <Banner tone="warning" className="!py-2 text-xs">
+              {audioError}
+            </Banner>
+          </div>
         )}
         {previewWindow.length === 0 && (
           <div className="text-muted text-sm text-center px-4">
@@ -110,6 +137,7 @@ export function ScenePreviewPlayer({
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
             onEnded={handleEnded}
+            onError={handleAudioError}
           />
         )}
         <button

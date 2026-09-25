@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import JSZip from "jszip";
+import { ApiError, apiFetch, apiFetchResponse, getErrorMessage } from "@/lib/api-client";
 
 /**
  * Downloads a Pro project as a DaVinci-ready zip: the multi-track FCPXML plus
@@ -18,9 +19,7 @@ export function ProExportButton({ projectId, title }: { projectId: string; title
     setError(null);
     try {
       setProgress("Terv betöltése…");
-      const res = await fetch(`/api/pro/export/${projectId}`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Export sikertelen.");
+      const data = await apiFetch<any>(`/api/pro/export/${projectId}`);
 
       const zip = new JSZip();
       zip.file("project.fcpxml", data.fcpxml);
@@ -30,12 +29,13 @@ export function ProExportButton({ projectId, title }: { projectId: string; title
 
       if (data.audioUrl && data.audioFilename) {
         setProgress("Hang…");
-        const a = await fetch(`/api/proxy?url=${encodeURIComponent(data.audioUrl)}`);
-        if (!a.ok) throw new Error("Hang letöltése sikertelen.");
+        // A failing proxy call throws an ApiError with a ready-to-show message.
+        const a = await apiFetchResponse(`/api/proxy?url=${encodeURIComponent(data.audioUrl)}`);
         zip.file(data.audioFilename, await a.arrayBuffer());
       }
 
       const assets: { name: string; url: string }[] = data.assets || [];
+      let skippedAssets = 0;
       // The same image can back several shots; fetch each URL once.
       const seen = new Map<string, string>();
       for (let i = 0; i < assets.length; i++) {
@@ -49,9 +49,18 @@ export function ProExportButton({ projectId, title }: { projectId: string; title
             continue;
           }
         }
-        const r = await fetch(`/api/proxy?url=${encodeURIComponent(url)}`);
-        if (!r.ok) continue; // a single missing asset must not kill the export
-        zip.file(name, await r.arrayBuffer());
+        let assetBytes: ArrayBuffer;
+        try {
+          assetBytes = await (await apiFetchResponse(`/api/proxy?url=${encodeURIComponent(url)}`)).arrayBuffer();
+        } catch (assetErr) {
+          // A single missing asset must not kill the export — but a dropped connection should.
+          if (assetErr instanceof ApiError && assetErr.kind === "http") {
+            skippedAssets++;
+            continue;
+          }
+          throw assetErr;
+        }
+        zip.file(name, assetBytes);
         seen.set(url, name);
       }
 
@@ -64,13 +73,17 @@ export function ProExportButton({ projectId, title }: { projectId: string; title
       a.click();
       URL.revokeObjectURL(href);
 
-      if (Array.isArray(data.missingShots) && data.missingShots.length > 0) {
-        setError(
-          `Kész, de ${data.missingShots.length} shotnál nincs média — azok idejét a szomszédos klip tölti ki.`
-        );
+      const missingShots = Array.isArray(data.missingShots) ? data.missingShots.length : 0;
+      if (missingShots > 0 || skippedAssets > 0) {
+        const parts: string[] = [];
+        if (missingShots > 0) {
+          parts.push(`${missingShots} shotnál nincs média — azok idejét a szomszédos klip tölti ki`);
+        }
+        if (skippedAssets > 0) parts.push(`${skippedAssets} médiafájlt nem sikerült letölteni`);
+        setError(`Az export elkészült, de: ${parts.join("; ")}.`);
       }
-    } catch (e: any) {
-      setError(e?.message || "Export sikertelen.");
+    } catch (e) {
+      setError(getErrorMessage(e, "Az export nem sikerült."));
     } finally {
       setBusy(false);
       setProgress("");

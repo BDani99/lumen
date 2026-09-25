@@ -12,10 +12,31 @@ import { createClient } from "@/utils/supabase/client";
 export function useProjectRealtime(initialProject: any) {
   const [project, setProject] = useState(initialProject);
   const [scenes, setScenes] = useState<any[]>(initialProject.video_scenes || []);
+  // True once a realtime channel has been failing for a few seconds (the UI keeps
+  // working from local state; this only drives a non-blocking warning).
+  const [realtimeError, setRealtimeError] = useState(false);
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
+    // Supabase retries a broken channel on its own, so a blip must not flash a
+    // warning: only report after the failure has lasted a few seconds.
+    const failing = new Set<string>();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const trackStatus = (name: string) => (status: string) => {
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        failing.add(name);
+        if (!timer) timer = setTimeout(() => setRealtimeError(true), 4000);
+      } else if (status === "SUBSCRIBED") {
+        failing.delete(name);
+        if (failing.size === 0) {
+          if (timer) clearTimeout(timer);
+          timer = undefined;
+          setRealtimeError(false);
+        }
+      }
+    };
+
     const sceneSubscription = supabase
       .channel("schema-db-changes")
       .on(
@@ -37,7 +58,7 @@ export function useProjectRealtime(initialProject: any) {
           }
         }
       )
-      .subscribe();
+      .subscribe(trackStatus("scenes"));
 
     const projectSubscription = supabase
       .channel("project-changes")
@@ -53,13 +74,14 @@ export function useProjectRealtime(initialProject: any) {
           setProject((prev: any) => ({ ...prev, ...payload.new }));
         }
       )
-      .subscribe();
+      .subscribe(trackStatus("project"));
 
     return () => {
+      if (timer) clearTimeout(timer);
       supabase.removeChannel(sceneSubscription);
       supabase.removeChannel(projectSubscription);
     };
   }, [project.id, router, supabase]);
 
-  return { project, setProject, scenes, setScenes };
+  return { project, setProject, scenes, setScenes, realtimeError };
 }

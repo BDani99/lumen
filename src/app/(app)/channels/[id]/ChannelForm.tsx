@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { apiFetch, getErrorMessage } from "@/lib/api-client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import VoiceSettingsPanel from "./VoiceSettingsPanel";
@@ -28,9 +29,21 @@ export default function ChannelForm({
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const errorRef = useRef<HTMLDivElement>(null);
+
+  // The banner sits at the top while the save button is at the bottom — bring it into view.
+  useEffect(() => {
+    if (formError) errorRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [formError]);
+
   const form = useChannelFormState(initialChannel);
   const videoDefaults = useVideoDefaultsState(initialChannel);
-  const { namePoolPresets, selectedNamePoolPreset } = useNamePoolPresets(form.namePoolPresetId);
+  const {
+    namePoolPresets,
+    selectedNamePoolPreset,
+    error: namePoolPresetsError,
+    retry: retryNamePoolPresets,
+  } = useNamePoolPresets(form.namePoolPresetId);
   const { voiceSettings, setVoiceSettings } = useVoiceSettingsState(initialChannel);
 
   const handleSave = async () => {
@@ -52,16 +65,13 @@ export default function ChannelForm({
     });
 
     try {
-      const res = await fetch(isNew ? "/api/channels" : `/api/channels/${initialChannel.id}`, {
+      await apiFetch(isNew ? "/api/channels" : `/api/channels/${initialChannel.id}`, {
         method: isNew ? "POST" : "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(channelData),
+        json: channelData,
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Mentés sikertelen.");
       router.push("/channels");
-    } catch (e: any) {
-      setFormError(e.message || "Mentés sikertelen.");
+    } catch (e) {
+      setFormError(getErrorMessage(e, "A csatornát nem sikerült menteni."));
     } finally {
       setLoading(false);
     }
@@ -69,7 +79,11 @@ export default function ChannelForm({
 
   return (
     <div className="space-y-6">
-      {formError && <Banner tone="error">{formError}</Banner>}
+      {formError && (
+        <div ref={errorRef}>
+          <Banner tone="error">{formError}</Banner>
+        </div>
+      )}
       <div className="flex items-center gap-4 mb-8">
         <Link
           href="/channels"
@@ -165,6 +179,8 @@ export default function ChannelForm({
           setNamePoolPresetId={form.setNamePoolPresetId}
           namePoolPresets={namePoolPresets}
           selectedNamePoolPreset={selectedNamePoolPreset}
+          presetsError={namePoolPresetsError}
+          onRetryPresets={retryNamePoolPresets}
         />
 
         <MasterPromptSection masterPrompt={form.masterPrompt} setMasterPrompt={form.setMasterPrompt} />
@@ -172,7 +188,7 @@ export default function ChannelForm({
         <VoiceSettingsPanel value={voiceSettings} onChange={setVoiceSettings} />
 
         <div className="flex justify-end border-t border-border pt-6">
-          <Button onClick={handleSave} disabled={loading} className="!px-6 !py-3">
+          <Button onClick={handleSave} loading={loading} className="!px-6 !py-3">
             {loading ? "Mentés…" : "Csatorna mentése"}
           </Button>
         </div>

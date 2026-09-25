@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useMemo } from "react";
 import Link from "next/link";
+import { apiFetch, getErrorMessage } from "@/lib/api-client";
 import { createClient } from "@/utils/supabase/client";
 import {
   PIPELINE_STAGES,
@@ -73,13 +74,9 @@ export default function ProgressView({
     setResuming(true);
     setResumeError(null);
     try {
-      const res = await fetch(`/api/projects/${project.id}/resume`, { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || "Folytatás sikertelen");
-      }
-    } catch (e: any) {
-      setResumeError(e?.message || "Folytatás sikertelen");
+      await apiFetch(`/api/projects/${project.id}/resume`, { method: "POST" });
+    } catch (e) {
+      setResumeError(getErrorMessage(e, "A folytatás nem sikerült."));
     } finally {
       setResuming(false);
     }
@@ -97,18 +94,14 @@ export default function ProgressView({
     setStopping(true);
     setStopError(null);
     try {
-      const res = await fetch(`/api/projects/${project.id}/cancel`, { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || "Leállítás sikertelen");
-      }
+      await apiFetch(`/api/projects/${project.id}/cancel`, { method: "POST" });
       setProject((prev) => ({
         ...prev,
         status: "Cancelled",
         updated_at: new Date().toISOString(),
       }));
-    } catch (e: any) {
-      setStopError(e?.message || "Leállítás sikertelen");
+    } catch (e) {
+      setStopError(getErrorMessage(e, "A leállítás nem sikerült."));
     } finally {
       setStopping(false);
     }

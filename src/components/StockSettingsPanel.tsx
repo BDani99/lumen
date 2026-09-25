@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Input, Label, Toggle } from "@/components/ui";
+import { Banner, Input, Label, Toggle } from "@/components/ui";
+import { apiFetch, isAbortError } from "@/lib/api-client";
 import {
   MIN_CONFIDENCE_FLOOR,
   STOCK_PROVIDER_ENV,
@@ -28,22 +29,27 @@ export function StockSettingsPanel({
   disabled?: boolean;
 }) {
   const [configured, setConfigured] = useState<Record<string, boolean>>({});
+  const [statusError, setStatusError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     (async () => {
       try {
-        const res = await fetch("/api/stock/status");
-        const data = await res.json().catch(() => ({}));
-        if (!cancelled && res.ok) setConfigured(data.configured || {});
-      } catch {
-        /* status is a nicety — the panel still works without it */
+        const data = await apiFetch<{ configured?: Record<string, boolean> }>("/api/stock/status", {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        setConfigured(data?.configured || {});
+        setStatusError(false);
+      } catch (e) {
+        if (isAbortError(e) || controller.signal.aborted) return;
+        // The panel still works, but we must not pretend every key is configured.
+        setStatusError(true);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    return () => controller.abort();
+  }, [attempt]);
 
   const renderChain = (kind: StockKind) => {
     const chain = kind === "video" ? value.video : value.image;
@@ -131,6 +137,22 @@ export function StockSettingsPanel({
 
   return (
     <div className={`space-y-3 ${disabled ? "opacity-60" : ""}`}>
+      {statusError && (
+        <Banner tone="warning">
+          A szolgáltatók beállításának állapotát nem sikerült lekérdezni, ezért a hiányzó API
+          kulcsokat nem jelezzük.{" "}
+          <button
+            type="button"
+            onClick={() => {
+              setStatusError(false);
+              setAttempt((n) => n + 1);
+            }}
+            className="cursor-pointer underline"
+          >
+            Újrapróbálás
+          </button>
+        </Banner>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {renderChain("video")}
         {renderChain("image")}

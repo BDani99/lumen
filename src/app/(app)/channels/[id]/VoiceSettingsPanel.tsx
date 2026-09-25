@@ -27,7 +27,8 @@ export default function VoiceSettingsPanel({
 }) {
   const [customModel, setCustomModel] = useState(false);
 
-  const { ai33Available, ai33Health, dictionaries } = useAi33Status();
+  const { ai33Available, ai33Health, dictionaries, statusError, dictionariesError, retry } =
+    useAi33Status();
 
   const preview = useVoicePreview();
 
@@ -63,6 +64,11 @@ export default function VoiceSettingsPanel({
           {ai33Available === false && (
             <span className="mt-1.5 block text-danger">
               AI33 fiók jelenleg nem elérhető (elfogyott kredit vagy szolgáltatás-kiesés).
+            </span>
+          )}
+          {statusError && ai33Available === null && (
+            <span className="mt-1.5 block text-muted">
+              {statusError} A szolgáltatók állapota ezért nem látszik.
             </span>
           )}
         </>
@@ -211,6 +217,14 @@ export default function VoiceSettingsPanel({
             </option>
           ))}
         </select>
+        {dictionariesError && (
+          <p className="mt-1.5 text-xs text-danger">
+            {dictionariesError}{" "}
+            <button type="button" onClick={retry} className="cursor-pointer underline">
+              Újrapróbálás
+            </button>
+          </p>
+        )}
         <p className="mt-1.5 text-xs text-muted">
           Opcionális — csak a kiejtést módosítja (pl. márkanevek), a leírt szöveg változatlan marad.
         </p>
@@ -234,6 +248,7 @@ export default function VoiceSettingsPanel({
         loadingMore={list.loadingMore}
         hasMore={list.hasMore}
         error={list.error}
+        onRetry={() => list.fetchVoices(1, false)}
         onLoadMore={() => list.fetchVoices(list.page + 1, true)}
         playingId={preview.playingId}
         onPlayPreview={preview.playPreview}
@@ -262,6 +277,7 @@ export default function VoiceSettingsPanel({
         value={value}
         selectedVoiceMeta={selection.selectedVoiceMeta}
         resolvingName={selection.resolvingName}
+        resolveError={selection.resolveError}
         playgroundText={playground.playgroundText}
         onPlaygroundTextChange={playground.setPlaygroundText}
         playgroundBusy={playground.playgroundBusy}

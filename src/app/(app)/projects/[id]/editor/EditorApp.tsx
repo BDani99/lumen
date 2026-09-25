@@ -27,7 +27,8 @@ export default function EditorApp({
     location_shot_sec?: number;
   } | null;
 }) {
-  const { project, setProject, scenes, setScenes } = useProjectRealtime(initialProject);
+  const { project, setProject, scenes, setScenes, realtimeError } =
+    useProjectRealtime(initialProject);
   const [editorError, setEditorError] = useState<string | null>(null);
 
   const isScriptReview = project.status === "Script_Review";
@@ -108,6 +109,7 @@ export default function EditorApp({
             variant="danger"
             onClick={davinciExport.handleClearMedia}
             disabled={davinciExport.isExporting || davinciExport.isClearingMedia || isGenerating}
+            loading={davinciExport.isClearingMedia}
             className="!py-2 text-xs sm:text-sm"
           >
             {davinciExport.isClearingMedia ? "Ürítés…" : "Storage ürítése"}
@@ -115,6 +117,7 @@ export default function EditorApp({
           <Button
             onClick={davinciExport.handleExportDaVinci}
             disabled={davinciExport.isExporting || project.status !== "Completed"}
+            loading={davinciExport.isExporting}
             className="!py-2 text-xs sm:text-sm"
           >
             {davinciExport.isExporting ? "Export…" : "Export DaVinci (.zip)"}
@@ -156,6 +159,34 @@ export default function EditorApp({
               variant="ghost"
               className="!p-0 !h-auto underline"
               onClick={() => setEditorError(null)}
+            >
+              Bezár
+            </Button>
+          </Banner>
+        </div>
+      )}
+
+      {realtimeError && (
+        <div className="px-3 md:px-4 pt-3">
+          <Banner tone="warning">
+            Az élő frissítés megszakadt — az oldal újratöltése segíthet.
+          </Banner>
+        </div>
+      )}
+
+      {davinciExport.exportFailedAssets && davinciExport.exportFailedAssets.length > 0 && (
+        <div className="px-3 md:px-4 pt-3">
+          <Banner tone="warning" title="Az export hiányos">
+            A ZIP elkészült, de {davinciExport.exportFailedAssets.length} fájlt nem sikerült
+            letölteni: {davinciExport.exportFailedAssets.slice(0, 6).join(", ")}
+            {davinciExport.exportFailedAssets.length > 6
+              ? ` és még ${davinciExport.exportFailedAssets.length - 6} másik`
+              : ""}
+            . A tárhelyen lévő média emiatt nem lett törölve — próbáld újra az exportot.{" "}
+            <Button
+              variant="ghost"
+              className="!p-0 !h-auto underline"
+              onClick={() => davinciExport.setExportFailedAssets(null)}
             >
               Bezár
             </Button>
@@ -208,6 +239,8 @@ export default function EditorApp({
           handleTimeUpdate={playback.handleTimeUpdate}
           handleLoadedMetadata={playback.handleLoadedMetadata}
           handleEnded={playback.handleEnded}
+          handleAudioError={playback.handleAudioError}
+          audioError={playback.audioError}
         />
 
         <SceneList

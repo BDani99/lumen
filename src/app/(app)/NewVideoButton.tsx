@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Banner, Button, Input, Label, Modal, SegmentedTabs, Select, Textarea } from "@/components/ui";
+import { apiFetch, getErrorMessage } from "@/lib/api-client";
 import { CostMiniTable } from "@/components/CostMiniTable";
 import { VideoScenePatternFields } from "@/components/VideoScenePatternFields";
 import { ProVideoForm } from "@/components/pro/ProVideoForm";
@@ -206,7 +207,14 @@ export default function NewVideoButton({ channels }: { channels: any[] }) {
       clearScript();
       return;
     }
-    const text = await file.text();
+    let text: string;
+    try {
+      text = await file.text();
+    } catch {
+      setFormError("A fájlt nem sikerült beolvasni. Próbáld újra, vagy válassz másik fájlt.");
+      clearScript();
+      return;
+    }
     if (!text.trim()) {
       setFormError("A fájl üres.");
       clearScript();
@@ -257,18 +265,13 @@ export default function NewVideoButton({ channels }: { channels: any[] }) {
         };
         if (customScript.trim()) proBody.customScript = customScript.trim();
 
-        const proRes = await fetch("/api/pro/videos", {
+        const proData = await apiFetch<{ project?: { id?: string } }>("/api/pro/videos", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(proBody),
+          json: proBody,
         });
-        const proData = await proRes.json().catch(() => ({}));
-        if (!proRes.ok) {
-          throw new Error(proData.error || "Hiba a Pro generálás indításakor.");
-        }
         setIsOpen(false);
         resetForm();
-        if (proData.project?.id) {
+        if (proData?.project?.id) {
           router.push(`/projects/${proData.project.id}/progress`);
         } else {
           router.refresh();
@@ -301,26 +304,29 @@ export default function NewVideoButton({ channels }: { channels: any[] }) {
       if (textModel) body.textModel = textModel;
       if (customScript.trim()) body.customScript = customScript.trim();
 
-      const res = await fetch("/api/videos", {
+      const data = await apiFetch<{ project?: { id?: string } }>("/api/videos", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        json: body,
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || "Hiba a generálás indításakor.");
-      }
       setIsOpen(false);
       resetForm();
-      if (data.project?.id) {
+      if (data?.project?.id) {
         router.push(`/projects/${data.project.id}/progress`);
       } else {
         router.refresh();
       }
-    } catch (e: any) {
-      setFormError(e.message || "Hiba a generálás indításakor.");
+    } catch (e) {
+      setFormError(
+        getErrorMessage(
+          e,
+          uiMode === "pro"
+            ? "A Pro generálást nem sikerült elindítani."
+            : "A generálást nem sikerült elindítani."
+        )
+      );
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -747,7 +753,7 @@ export default function NewVideoButton({ channels }: { channels: any[] }) {
               <Button variant="ghost" onClick={closeModal} disabled={loading}>
                 Mégsem
               </Button>
-              <Button onClick={handleCreate} disabled={loading}>
+              <Button onClick={handleCreate} loading={loading}>
                 {loading ? "Indítás…" : "Generálás indítása"}
               </Button>
             </div>

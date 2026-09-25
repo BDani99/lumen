@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { isAbortError } from "@/lib/api-client";
 import type { VoiceItem } from "../types";
 
 /**
@@ -40,7 +41,9 @@ export function useVoicePreview() {
       };
       try {
         await audio.play();
-      } catch {
+      } catch (e) {
+        // play() rejects with AbortError when the user stops/switches the clip before it starts.
+        if (isAbortError(e)) return;
         setPlayingId(null);
         setError("A böngésző nem tudta elindítani a mintát.");
       }

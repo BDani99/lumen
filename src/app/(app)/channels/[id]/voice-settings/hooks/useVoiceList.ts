@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { apiFetch, getErrorMessage, isAbortError } from "@/lib/api-client";
 import type { VoiceItem, VoiceProvider } from "../types";
 import { genderApiValue, matchesGender, matchesLanguage, matchesSearch } from "../matchers";
+
+type VoicesResponse = {
+  voices?: VoiceItem[];
+  pagination?: { has_more?: boolean; total?: number } | null;
+};
 
 /**
  * Voice-list fetching, paging and filter state for the AI33 voice picker.
@@ -69,15 +75,13 @@ export function useVoiceList(provider: VoiceProvider, stopPreview: () => void) {
           params.set("language", languageFilter);
         }
 
-        const res = await fetch(`/api/voices?${params.toString()}`, {
+        const data = await apiFetch<VoicesResponse>(`/api/voices?${params.toString()}`, {
           signal: controller.signal,
         });
-        const data = await res.json();
         if (requestId !== requestIdRef.current) return;
-        if (!res.ok) throw new Error(data.error || "Nem sikerült betölteni a hangokat.");
 
-        let nextVoices: VoiceItem[] = data.voices || [];
-        let pagination = data.pagination;
+        let nextVoices: VoiceItem[] = data?.voices || [];
+        let pagination = data?.pagination;
 
         // If language-only API query returned nothing, fall back to gender (or unfiltered)
         // so local language matching can still run on a useful page.
@@ -94,14 +98,17 @@ export function useVoiceList(provider: VoiceProvider, stopPreview: () => void) {
             page_size: "50",
             gender: genderApiValue(genderFilter),
           });
-          const res2 = await fetch(`/api/voices?${fallback.toString()}`, {
-            signal: controller.signal,
-          });
-          const data2 = await res2.json();
-          if (requestId !== requestIdRef.current) return;
-          if (res2.ok) {
-            nextVoices = data2.voices || [];
-            pagination = data2.pagination;
+          try {
+            const data2 = await apiFetch<VoicesResponse>(`/api/voices?${fallback.toString()}`, {
+              signal: controller.signal,
+            });
+            if (requestId !== requestIdRef.current) return;
+            nextVoices = data2?.voices || [];
+            pagination = data2?.pagination;
+          } catch (fallbackError) {
+            // The fallback is only a best-effort widening of an already
+            // successful (empty) query — keep that result, but never swallow a cancel.
+            if (isAbortError(fallbackError)) throw fallbackError;
           }
         }
 
@@ -113,11 +120,11 @@ export function useVoiceList(provider: VoiceProvider, stopPreview: () => void) {
         setPage(pageNum);
         setHasMore(Boolean(pagination?.has_more));
         setTotal(Number(pagination?.total ?? nextVoices.length));
-      } catch (e: any) {
-        if (e?.name === "AbortError") return;
+      } catch (e) {
+        if (isAbortError(e)) return;
         if (requestId !== requestIdRef.current) return;
         if (!append) setVoices([]);
-        setError(e.message || "Hiba a hanglista betöltésekor.");
+        setError(getErrorMessage(e, "A hanglistát nem sikerült betölteni."));
       } finally {
         if (requestId === requestIdRef.current) {
           setLoading(false);

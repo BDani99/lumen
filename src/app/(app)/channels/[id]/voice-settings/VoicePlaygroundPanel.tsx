@@ -7,6 +7,7 @@ export function VoicePlaygroundPanel({
   value,
   selectedVoiceMeta,
   resolvingName,
+  resolveError,
   playgroundText,
   onPlaygroundTextChange,
   playgroundBusy,
@@ -18,6 +19,8 @@ export function VoicePlaygroundPanel({
   value: VoiceSettingsValue;
   selectedVoiceMeta: SelectedVoiceMeta | null;
   resolvingName: boolean;
+  /** Set when looking up the saved voice's name failed. */
+  resolveError?: string | null;
   playgroundText: string;
   onPlaygroundTextChange: (value: string) => void;
   playgroundBusy: boolean;
@@ -55,6 +58,9 @@ export function VoicePlaygroundPanel({
             <p className="text-sm font-medium text-white">
               {selectedVoiceName || (resolvingName ? "Név betöltése…" : "Ismeretlen hang")}
             </p>
+            {!selectedVoiceName && resolveError && (
+              <p className="mt-0.5 text-xs text-danger">{resolveError}</p>
+            )}
             {selectedVoiceExtras && (
               <p className="mt-0.5 text-xs text-muted">{selectedVoiceExtras}</p>
             )}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { apiFetch, getErrorMessage, isAbortError } from "@/lib/api-client";
 import type { SelectedVoiceMeta, VoiceItem, VoiceProvider, VoiceSettingsValue } from "../types";
 import { defaultModelForProvider } from "../constants";
 
@@ -23,6 +24,7 @@ export function useVoiceSelection({
 }) {
   const [selectedVoiceMeta, setSelectedVoiceMeta] = useState<SelectedVoiceMeta | null>(null);
   const [resolvingName, setResolvingName] = useState(false);
+  const [resolveError, setResolveError] = useState<string | null>(null);
 
   // Keep selected voice name in sync when list loads / voiceId changes
   useEffect(() => {
@@ -52,18 +54,21 @@ export function useVoiceSelection({
       return;
     }
 
+    const controller = new AbortController();
     let cancelled = false;
     setResolvingName(true);
+    setResolveError(null);
     (async () => {
       try {
         const params = new URLSearchParams({
           voiceId,
           provider: value.provider,
         });
-        const res = await fetch(`/api/voices/resolve?${params}`);
-        const data = await res.json().catch(() => ({}));
+        const data = await apiFetch<{
+          voice?: { name?: string; gender?: string; language?: string; voice_id?: string };
+        }>(`/api/voices/resolve?${params}`, { signal: controller.signal });
         if (cancelled) return;
-        if (res.ok && data.voice?.name) {
+        if (data?.voice?.name) {
           setSelectedVoiceMeta({
             name: data.voice.name,
             gender: data.voice.gender,
@@ -75,8 +80,9 @@ export function useVoiceSelection({
             voiceId: data.voice.voice_id || voiceId,
           });
         }
-      } catch {
-        /* ignore */
+      } catch (e) {
+        if (isAbortError(e) || cancelled) return;
+        setResolveError(getErrorMessage(e, "A hang nevét nem sikerült betölteni."));
       } finally {
         if (!cancelled) setResolvingName(false);
       }
@@ -84,6 +90,7 @@ export function useVoiceSelection({
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value.voiceId, value.voiceName, value.provider]);
@@ -136,6 +143,7 @@ export function useVoiceSelection({
   return {
     selectedVoiceMeta,
     resolvingName,
+    resolveError,
     selectVoice,
     handleVoiceIdInputChange,
     setProvider,

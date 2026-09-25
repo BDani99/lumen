@@ -11,6 +11,8 @@ export function NamePoolSection({
   setNamePoolPresetId,
   namePoolPresets,
   selectedNamePoolPreset,
+  presetsError,
+  onRetryPresets,
 }: {
   useNamePools: boolean;
   setUseNamePools: (value: boolean) => void;
@@ -18,6 +20,9 @@ export function NamePoolSection({
   setNamePoolPresetId: (value: string) => void;
   namePoolPresets: NamePoolPreset[];
   selectedNamePoolPreset: NamePoolPreset | null;
+  /** Set when the preset list failed to load (an empty select is then NOT "no presets"). */
+  presetsError?: string | null;
+  onRetryPresets?: () => void;
 }) {
   return (
     <FormSection
@@ -45,8 +50,22 @@ export function NamePoolSection({
             </option>
           ))}
         </Select>
+        {presetsError && (
+          <p className="mt-1.5 text-xs text-danger">
+            {presetsError}
+            {onRetryPresets && (
+              <>
+                {" "}
+                <button type="button" onClick={onRetryPresets} className="cursor-pointer underline">
+                  Újrapróbálás
+                </button>
+              </>
+            )}
+          </p>
+        )}
       </div>
       {useNamePools &&
+        !presetsError &&
         (selectedNamePoolPreset ? (
           <p
             className={`text-xs ${

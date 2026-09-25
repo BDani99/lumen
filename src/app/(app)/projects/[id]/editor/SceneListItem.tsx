@@ -1,6 +1,6 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useState, type RefObject } from "react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui";
 import { getSceneMotionClips, type MotionClipsByScene } from "@/lib/motion-clips";
@@ -45,6 +45,11 @@ export function SceneListItem({
   onRegenerate: (sceneId: string, prompt: string) => void;
   onRegenerateClip: (sceneId: string, clipIndex: number, narration: string) => void;
 }) {
+  // Thumbnails the browser could not load — a hint instead of a blank box.
+  const [failedUrls, setFailedUrls] = useState<ReadonlySet<string>>(new Set());
+  const markFailed = (url: string) =>
+    setFailedUrls((prev) => (prev.has(url) ? prev : new Set(prev).add(url)));
+
   // Exactly what this scene contributes to the timeline (and to the export) —
   // same builder, so the panel can't drift from what actually gets shown.
   const sceneTimelineIndex = visualTimeline.sortedScenes.findIndex((s: any) => s.id === scene.id);
@@ -137,8 +142,14 @@ export function SceneListItem({
                     preload="metadata"
                     muted
                     playsInline
+                    onError={() => markFailed(clip.url)}
                     className="w-full h-full object-cover"
                   />
+                  {failedUrls.has(clip.url) && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-surface text-muted text-[10px] text-center px-1">
+                      Nem tölthető be
+                    </div>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
                   <span className="text-[11px] text-ink">
@@ -162,7 +173,7 @@ export function SceneListItem({
                 <Button
                   variant="secondary"
                   className="!py-1 !px-2.5 text-xs"
-                  disabled={clipBusy}
+                  loading={clipBusy}
                   onClick={() => {
                     const el = document.getElementById(
                       `clip-narration-${scene.id}-${clipIndex}`
@@ -185,7 +196,19 @@ export function SceneListItem({
                 <div className="flex gap-2">
                   <div className="w-20 h-12 bg-surface relative shrink-0 rounded-[var(--radius)] overflow-hidden">
                     {isPlayableImageUrl(scene.image_url) ? (
-                      <img src={scene.image_url} alt="" className="w-full h-full object-cover" />
+                      <>
+                        <img
+                          src={scene.image_url}
+                          alt=""
+                          onError={() => markFailed(scene.image_url)}
+                          className="w-full h-full object-cover"
+                        />
+                        {failedUrls.has(scene.image_url) && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-surface text-muted text-[10px] text-center px-1">
+                            Nem tölthető be
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center text-muted text-[10px] text-center px-1">
                         {regeneratingSceneId === scene.id
@@ -219,7 +242,7 @@ export function SceneListItem({
                   <Button
                     variant="secondary"
                     className="!py-1 !px-2.5 text-xs"
-                    disabled={regeneratingSceneId === scene.id}
+                    loading={regeneratingSceneId === scene.id}
                     onClick={() => {
                       const el = document.getElementById(`prompt-${scene.id}`) as HTMLInputElement;
                       if (el) onRegenerate(scene.id, el.value);

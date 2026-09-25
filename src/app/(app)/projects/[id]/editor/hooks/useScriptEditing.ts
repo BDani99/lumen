@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useConfirm } from "@/hooks/useConfirm";
+import { apiFetch, getErrorMessage, isAbortError } from "@/lib/api-client";
 
 /** Script-review draft editing: save, continue to generation, or regenerate from scratch. */
 export function useScriptEditing({
@@ -33,20 +34,17 @@ export function useScriptEditing({
     setScriptBusy(true);
     setEditorError(null);
     try {
-      const res = await fetch(`/api/projects/${project.id}/script`, {
+      await apiFetch(`/api/projects/${project.id}/script`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script: scriptDraft }),
+        json: { script: scriptDraft },
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Mentés sikertelen");
-      }
       setProject((prev: any) => ({ ...prev, generated_script: scriptDraft.trim() }));
-    } catch (e: any) {
-      setEditorError(e.message || "Mentés sikertelen");
+    } catch (e: unknown) {
+      if (isAbortError(e)) return;
+      setEditorError(getErrorMessage(e, "A forgatókönyv mentése nem sikerült. Próbáld újra."));
+    } finally {
+      setScriptBusy(false);
     }
-    setScriptBusy(false);
   };
 
   const handleContinueFromScript = async () => {
@@ -58,18 +56,14 @@ export function useScriptEditing({
     setScriptBusy(true);
     setEditorError(null);
     try {
-      const res = await fetch(`/api/projects/${project.id}/continue`, {
+      await apiFetch(`/api/projects/${project.id}/continue`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script: scriptDraft }),
+        json: { script: scriptDraft },
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Folytatás sikertelen");
-      }
       router.push(`/projects/${project.id}/progress`);
-    } catch (e: any) {
-      setEditorError(e.message || "Folytatás sikertelen");
+    } catch (e: unknown) {
+      if (isAbortError(e)) return;
+      setEditorError(getErrorMessage(e, "A folytatás nem sikerült. Próbáld újra."));
       setScriptBusy(false);
     }
   };
@@ -85,16 +79,11 @@ export function useScriptEditing({
     setScriptBusy(true);
     setEditorError(null);
     try {
-      const res = await fetch(`/api/projects/${project.id}/script/regenerate`, {
-        method: "POST",
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Újragenerálás sikertelen");
-      }
+      await apiFetch(`/api/projects/${project.id}/script/regenerate`, { method: "POST" });
       router.push(`/projects/${project.id}/progress`);
-    } catch (e: any) {
-      setEditorError(e.message || "Újragenerálás sikertelen");
+    } catch (e: unknown) {
+      if (isAbortError(e)) return;
+      setEditorError(getErrorMessage(e, "A forgatókönyv újragenerálása nem sikerült. Próbáld újra."));
       setScriptBusy(false);
     }
   };
