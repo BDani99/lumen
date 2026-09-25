@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { apiError, routeError } from "@/lib/api-response";
+import { CONFIG_ERROR_MESSAGE } from "@/lib/errors";
 import { assertProjectOwned, forbidden, requireUserApi } from "@/lib/auth";
 import {
   downloadOpenRouterVideoBytes,
@@ -27,11 +29,12 @@ import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 export const maxDuration = 300;
 
 async function requireSceneOwned(sceneId: string, userId: string) {
-  const { data: scene } = await supabaseAdmin
+  const { data: scene, error } = await supabaseAdmin
     .from("video_scenes")
     .select("*")
     .eq("id", sceneId)
     .maybeSingle();
+  if (error) throw error;
   if (!scene?.project_id) return null;
   if (!(await assertProjectOwned(scene.project_id, userId))) return null;
   return scene;
@@ -58,21 +61,25 @@ export async function POST(req: Request) {
     });
     if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds);
 
-    const { sceneId, clipIndex, narration } = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object") return apiError("Érvénytelen kérés.", 400);
+    const { sceneId, clipIndex, narration } = body as {
+      sceneId?: string;
+      clipIndex?: unknown;
+      narration?: unknown;
+    };
     if (!sceneId || typeof clipIndex !== "number" || !String(narration || "").trim()) {
-      return NextResponse.json(
-        { error: "Missing sceneId, clipIndex or narration" },
-        { status: 400 }
-      );
+      return apiError("Hiányzik a jelenet, a klip sorszáma vagy a narráció.", 400);
     }
 
     const scene = await requireSceneOwned(sceneId, auth.user.id);
     if (!scene) {
-      return forbidden("Scene not found or not owned");
+      return forbidden("A jelenet nem található vagy nem a tiéd.");
     }
 
     if (!isR2Configured()) {
-      return NextResponse.json({ error: "R2 nincs konfigurálva" }, { status: 400 });
+      console.error("[api/scenes/regenerate-clip] R2 is not configured");
+      return apiError(CONFIG_ERROR_MESSAGE, 503, { code: "config" });
     }
 
     const { data: project, error: projectErr } = await supabaseAdmin
@@ -80,12 +87,13 @@ export async function POST(req: Request) {
       .select("*, channels(*)")
       .eq("id", scene.project_id)
       .single();
-    if (projectErr || !project) {
-      return NextResponse.json({ error: "Projekt nem található" }, { status: 404 });
+    if (projectErr) throw projectErr;
+    if (!project) {
+      return apiError("A projekt nem található.", 404, { code: "not_found" });
     }
     const channel = Array.isArray(project.channels) ? project.channels[0] : project.channels;
     if (!channel) {
-      return NextResponse.json({ error: "Csatorna nem található" }, { status: 404 });
+      return apiError("A csatorna nem található.", 404, { code: "not_found" });
     }
 
     const motionClipsByScene = (project.timeline_data?.motionClipsByScene ||
@@ -104,14 +112,11 @@ export async function POST(req: Request) {
 
     const existingClips = getSceneMotionClips(scene, motionClipsByScene, duration);
     if (clipIndex < 0 || clipIndex >= Math.max(existingClips.length, 1)) {
-      return NextResponse.json({ error: "Érvénytelen klip index" }, { status: 400 });
+      return apiError("Érvénytelen klip sorszám.", 400);
     }
 
     if (strategy === "image_to_video" && !isPlayableImageUrl(scene.image_url)) {
-      return NextResponse.json(
-        { error: "Nincs forráskép a klip image-to-video újragenerálásához" },
-        { status: 400 }
-      );
+      return apiError("Nincs forráskép a klip újragenerálásához.", 400);
     }
 
     const trimmedNarration = String(narration).trim();
@@ -139,12 +144,17 @@ export async function POST(req: Request) {
       });
       url = await uploadMp4ToR2({ key, body: mp4 });
     } catch (e: any) {
-      const msg = isOpenRouterCreditsError(e)
-        ? "Nincs elég OpenRouter kredit."
-        : isRateLimitError(e)
-          ? `Rate limit — próbáld újra kb. ${Math.round(parseRetryAfterMs(e, 10_000) / 1000)}mp múlva.`
-          : e?.message || "Videó generálás sikertelen.";
-      return NextResponse.json({ error: msg }, { status: 500 });
+      console.error("[api/scenes/regenerate-clip] clip generation failed:", e);
+      if (isOpenRouterCreditsError(e)) {
+        return apiError("A videógenerálásra használt szolgáltatás egyenlege elfogyott. Jelezd az üzemeltetőnek.", 503, { code: "credits" });
+      }
+      if (isRateLimitError(e)) {
+        const secs = Math.round(parseRetryAfterMs(e, 10_000) / 1000);
+        return apiError(`Túl sok kérés. Próbáld újra kb. ${secs} mp múlva.`, 429, { code: "rate_limited" });
+      }
+      return routeError(e, "api/scenes/regenerate-clip (generate)", {
+        fallback: "A videó generálása nem sikerült. Próbáld újra.",
+      });
     }
 
     const newClip = { url, durationSec: duration, narration: trimmedNarration };
@@ -172,8 +182,7 @@ export async function POST(req: Request) {
       clipIndex,
       sceneVideoUrl: clipIndex === 0 ? url : undefined,
     });
-  } catch (err: any) {
-    console.error("[api/scenes/regenerate-clip]", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return routeError(err, "api/scenes/regenerate-clip", { fallback: "A klip újragenerálása nem sikerült." });
   }
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiError, routeError } from "@/lib/api-response";
 import { supabaseAdmin } from "@/lib/supabase";
 import {
   assertProjectOwned,
@@ -19,19 +20,23 @@ export async function PATCH(
 
     const { projectId } = await params;
     if (!(await assertProjectOwned(projectId, auth.user.id))) {
-      return forbidden("Project not found or not owned");
+      return forbidden("A projekt nem található, vagy nincs hozzáférésed.");
     }
 
-    const { script } = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return apiError("Érvénytelen kérés.", 400);
+    }
+    const { script } = body;
     const trimmed = typeof script === "string" ? script.trim() : "";
 
     if (!trimmed) {
-      return NextResponse.json({ error: "Script cannot be empty" }, { status: 400 });
+      return apiError("A forgatókönyv nem lehet üres.", 400);
     }
     if (trimmed.length > MAX_SCRIPT_CHARS) {
-      return NextResponse.json(
-        { error: `Script too long (max ${MAX_SCRIPT_CHARS})` },
-        { status: 400 }
+      return apiError(
+        `A forgatókönyv túl hosszú (legfeljebb ${MAX_SCRIPT_CHARS.toLocaleString("hu-HU")} karakter lehet).`,
+        400
       );
     }
 
@@ -41,24 +46,32 @@ export async function PATCH(
       .eq("id", projectId)
       .single();
 
-    if (error || !project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    if (error && error.code !== "PGRST116") {
+      return routeError(error, "api/projects/[projectId]/script PATCH", {
+        fallback: "Nem sikerült betölteni a projektet.",
+      });
+    }
+    if (!project) {
+      return apiError("A projekt nem található.", 404);
     }
 
     if (project.status !== "Script_Review") {
-      return NextResponse.json(
-        { error: "Script only editable during Script_Review" },
-        { status: 400 }
+      return apiError(
+        "A forgatókönyv csak a jóváhagyási lépésben szerkeszthető. Frissítsd az oldalt.",
+        409
       );
     }
 
-    await supabaseAdmin
+    const { error: updateError } = await supabaseAdmin
       .from("video_projects")
       .update({ generated_script: trimmed, updated_at: new Date().toISOString() })
       .eq("id", projectId);
+    if (updateError) throw updateError;
 
     return NextResponse.json({ success: true });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return routeError(err, "api/projects/[projectId]/script PATCH", {
+      fallback: "Nem sikerült menteni a forgatókönyvet.",
+    });
   }
 }

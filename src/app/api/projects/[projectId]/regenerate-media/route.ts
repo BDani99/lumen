@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiError, routeError } from "@/lib/api-response";
 import { supabaseAdmin } from "@/lib/supabase";
 import { inngest } from "@/lib/inngest/client";
 import { appendGenerationLog } from "@/lib/generation-log";
@@ -21,7 +22,7 @@ export async function POST(
 
     const { projectId } = await params;
     if (!(await assertProjectOwned(projectId, auth.user.id))) {
-      return forbidden("Project not found or not owned");
+      return forbidden("A projekt nem található, vagy nincs hozzáférésed.");
     }
 
     const { data: project, error } = await supabaseAdmin
@@ -30,21 +31,23 @@ export async function POST(
       .eq("id", projectId)
       .single();
 
-    if (error || !project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    if (error && error.code !== "PGRST116") {
+      return routeError(error, "api/projects/[projectId]/regenerate-media POST", {
+        fallback: "Nem sikerült betölteni a projektet.",
+      });
+    }
+    if (!project) {
+      return apiError("A projekt nem található.", 404);
     }
 
     if (project.status === "Image_Generation" || project.status === "Audio_Generation") {
-      return NextResponse.json(
-        { error: "Generálás már folyamatban van" },
-        { status: 409 }
-      );
+      return apiError("A generálás már folyamatban van.", 409);
     }
 
     if (project.status !== "Completed" && project.status !== "Failed") {
-      return NextResponse.json(
-        { error: `Nem indítható újragenerálás statusból: ${project.status}` },
-        { status: 400 }
+      return apiError(
+        "A projekt jelenlegi állapotában nem indítható újragenerálás. Frissítsd az oldalt.",
+        409
       );
     }
 
@@ -62,7 +65,7 @@ export async function POST(
     });
 
     const prev = (project.timeline_data || {}) as Record<string, unknown>;
-    await supabaseAdmin
+    const { error: updateError } = await supabaseAdmin
       .from("video_projects")
       .update({
         status: "Image_Generation",
@@ -85,6 +88,7 @@ export async function POST(
         updated_at: new Date().toISOString(),
       })
       .eq("id", projectId);
+    if (updateError) throw updateError;
 
     await appendGenerationLog(projectId, {
       level: "info",
@@ -99,8 +103,9 @@ export async function POST(
     });
 
     return NextResponse.json({ success: true });
-  } catch (err: any) {
-    console.error("[api/projects/regenerate-media]", err);
-    return NextResponse.json({ error: err.message || "Hiba" }, { status: 500 });
+  } catch (err) {
+    return routeError(err, "api/projects/[projectId]/regenerate-media POST", {
+      fallback: "Nem sikerült elindítani a média újragenerálását.",
+    });
   }
 }

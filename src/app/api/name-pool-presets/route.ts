@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { requireUserApi } from "@/lib/auth";
+import { apiError, routeError } from "@/lib/api-response";
 import { normalizeCategories, normalizePreset, DEFAULT_MIN_NAMES_PER_CATEGORY } from "@/lib/name-pools";
 
 /** List / create name-pool presets (account-level, shared across channels — same shape as /api/dictionaries). */
@@ -15,14 +16,13 @@ export async function GET() {
       .eq("user_id", auth.user.id)
       .order("created_at", { ascending: false });
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    if (error) throw error;
 
     return NextResponse.json({ presets: (data || []).map(normalizePreset).filter(Boolean) });
-  } catch (error: any) {
-    console.error("[api/name-pool-presets GET]", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (err) {
+    return routeError(err, "api/name-pool-presets GET", {
+      fallback: "Nem sikerült betölteni a névkészleteket.",
+    });
   }
 }
 
@@ -31,18 +31,21 @@ export async function POST(req: Request) {
     const auth = await requireUserApi();
     if (auth.error) return auth.error;
 
-    const body = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return apiError("Érvénytelen kérés.", 400);
+    }
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name) {
-      return NextResponse.json({ error: "Adj meg egy nevet a névkészletnek." }, { status: 400 });
+      return apiError("Adj meg egy nevet a névkészletnek.", 400);
     }
 
     const categories = normalizeCategories(body.categories);
     if (categories.length === 0) {
-      return NextResponse.json({ error: "Legalább egy kategória szükséges." }, { status: 400 });
+      return apiError("Legalább egy kategória szükséges.", 400);
     }
     if (categories.some((c) => !c.label.trim())) {
-      return NextResponse.json({ error: "Minden kategóriának kell egy név (label)." }, { status: 400 });
+      return apiError("Minden kategóriának kell egy név (label).", 400);
     }
 
     const minNamesPerCategory =
@@ -61,13 +64,13 @@ export async function POST(req: Request) {
       .select("*")
       .single();
 
-    if (error || !data) {
-      return NextResponse.json({ error: error?.message || "Létrehozás sikertelen" }, { status: 500 });
-    }
+    if (error) throw error;
+    if (!data) throw new Error("name_pool_presets insert returned no row");
 
     return NextResponse.json({ preset: normalizePreset(data) });
-  } catch (error: any) {
-    console.error("[api/name-pool-presets POST]", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (err) {
+    return routeError(err, "api/name-pool-presets POST", {
+      fallback: "Nem sikerült létrehozni a névkészletet.",
+    });
   }
 }

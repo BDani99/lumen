@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { AI33Client, ai33UserMessage, clampTtsSpeed, type AI33VoiceProvider } from "@/lib/ai33";
+import { AI33Client, clampTtsSpeed, type AI33VoiceProvider } from "@/lib/ai33";
+import { ai33NotConfigured, ai33RouteError } from "@/lib/ai33-response";
+import { apiError } from "@/lib/api-response";
 import { requireUserApi } from "@/lib/auth";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
@@ -46,9 +48,7 @@ export async function POST(req: Request) {
     const auth = await requireUserApi();
     if (auth.error) return auth.error;
 
-    if (!process.env.AI33_API_KEY) {
-      return NextResponse.json({ error: "AI33_API_KEY is not configured" }, { status: 500 });
-    }
+    if (!process.env.AI33_API_KEY) return ai33NotConfigured("api/voices/preview POST");
 
     const rateLimit = await checkRateLimit({
       userId: auth.user.id,
@@ -58,7 +58,10 @@ export async function POST(req: Request) {
     });
     if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds);
 
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return apiError("Érvénytelen kérés.", 400);
+    }
     const text = typeof body.text === "string" ? body.text.trim() : "";
     const voiceIdRaw = typeof body.voiceId === "string" ? body.voiceId : "";
     const provider = typeof body.provider === "string" ? body.provider : undefined;
@@ -77,18 +80,15 @@ export async function POST(req: Request) {
     const speed = clampTtsSpeed(Number(body.speed) || 1);
 
     if (!text) {
-      return NextResponse.json({ error: "Adj meg egy rövid szöveget." }, { status: 400 });
+      return apiError("Adj meg egy rövid szöveget.", 400);
     }
     if (text.length > MAX_CHARS) {
-      return NextResponse.json(
-        { error: `A szöveg max. ${MAX_CHARS} karakter lehet.` },
-        { status: 400 }
-      );
+      return apiError(`A szöveg max. ${MAX_CHARS} karakter lehet.`, 400);
     }
 
     const voiceId = resolveVoiceId(voiceIdRaw, provider);
     if (!voiceId) {
-      return NextResponse.json({ error: "Válassz vagy adj meg egy Voice ID-t." }, { status: 400 });
+      return apiError("Válassz vagy adj meg egy Voice ID-t.", 400);
     }
 
     const ai33 = new AI33Client();
@@ -100,7 +100,7 @@ export async function POST(req: Request) {
     });
     const taskId = started.task_id || started.id;
     if (!taskId) {
-      return NextResponse.json({ error: "Nem indult el a hanggenerálás." }, { status: 502 });
+      return apiError("Nem indult el a hanggenerálás.", 502, { code: "upstream_error" });
     }
 
     // Give the task a moment before first status check (avoids immediate busy)
@@ -115,21 +115,21 @@ export async function POST(req: Request) {
     }
 
     if (status.status === "failed") {
-      return NextResponse.json(
-        { error: status.error_message || "Hanggenerálás sikertelen." },
-        { status: 502 }
-      );
+      // error_message is raw provider text — log it, never send it to the browser.
+      console.error("[api/voices/preview POST] task failed:", status.error_message);
+      return apiError("A hanggenerálás sikertelen. Próbáld újra, vagy válassz másik hangot.", 502, {
+        code: "upstream_error",
+      });
     }
     if (status.status !== "done") {
-      return NextResponse.json(
-        { error: "Időtúllépés — próbáld újra rövidebb szöveggel." },
-        { status: 504 }
-      );
+      return apiError("Időtúllépés — próbáld újra rövidebb szöveggel.", 504, { code: "timeout" });
     }
 
     const audioUrl = status.metadata?.audio_url as string | undefined;
     if (!audioUrl) {
-      return NextResponse.json({ error: "Nincs audio URL a válaszban." }, { status: 502 });
+      return apiError("A hangszolgáltatás nem adott vissza hangfájlt. Próbáld újra.", 502, {
+        code: "upstream_error",
+      });
     }
 
     return NextResponse.json({
@@ -138,12 +138,10 @@ export async function POST(req: Request) {
       voiceId,
       durationHintMs: INITIAL_WAIT_MS + polls * POLL_INTERVAL_MS,
     });
-  } catch (error: any) {
-    console.error("[api/voices/preview]", error);
-    const msg = error?.message || "Hiba";
-    const friendly = /server_busy|temporarily busy/i.test(msg)
-      ? "Az AI33 átmenetileg foglalt a státuszlekérdezésnél. Várj pár másodpercet, majd próbáld újra."
-      : ai33UserMessage(error);
-    return NextResponse.json({ error: friendly }, { status: 502 });
+  } catch (err) {
+    // ai33UserMessage already has Hungarian text for the "server_busy" case.
+    return ai33RouteError(err, "api/voices/preview POST", {
+      fallback: "Nem sikerült elkészíteni a hangmintát.",
+    });
   }
 }

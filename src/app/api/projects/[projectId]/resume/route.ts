@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiError, routeError } from "@/lib/api-response";
 import { supabaseAdmin } from "@/lib/supabase";
 import { inngest } from "@/lib/inngest/client";
 import { appendGenerationLog } from "@/lib/generation-log";
@@ -28,7 +29,7 @@ export async function POST(
 
     const { projectId } = await params;
     if (!(await assertProjectOwned(projectId, auth.user.id))) {
-      return forbidden("Project not found or not owned");
+      return forbidden("A projekt nem található, vagy nincs hozzáférésed.");
     }
 
     const { data: project, error } = await supabaseAdmin
@@ -36,25 +37,28 @@ export async function POST(
       .select("id, status, title, generated_script, timeline_data, channel_id, channels(*)")
       .eq("id", projectId)
       .single();
-    if (error || !project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    if (error && error.code !== "PGRST116") {
+      return routeError(error, "api/projects/[projectId]/resume POST", {
+        fallback: "Nem sikerült betölteni a projektet.",
+      });
+    }
+    if (!project) {
+      return apiError("A projekt nem található.", 404);
     }
 
-    const { data: lastLog } = await supabaseAdmin
+    const { data: lastLog, error: lastLogError } = await supabaseAdmin
       .from("generation_logs")
       .select("created_at")
       .eq("project_id", projectId)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    if (lastLogError) throw lastLogError;
 
     // Authoritative check — the client's own staleness judgment is only a
     // hint for showing the button, never trusted for authorization.
     if (!isStalled(project.status, lastLog?.created_at)) {
-      return NextResponse.json(
-        { error: "A generálás nem tűnik elakadtnak — folytatás nem indítható." },
-        { status: 409 }
-      );
+      return apiError("A generálás nem tűnik elakadtnak — folytatás nem indítható.", 409);
     }
 
     const idleMinutes = lastLog?.created_at ? Math.round(minutesSince(lastLog.created_at)) : null;
@@ -79,34 +83,36 @@ export async function POST(
       });
     } else if (project.status === "Audio_Generation") {
       if (!project.generated_script?.trim()) {
-        return NextResponse.json(
-          { error: "Nincs elmentett forgatókönyv — a szöveg fázist kell újraindítani." },
-          { status: 400 }
+        return apiError(
+          "Nincs elmentett forgatókönyv — a szöveg fázist kell újraindítani.",
+          400
         );
       }
       await inngest.send({ name: "video/continue", data: { projectId } });
     } else if (project.status === "Image_Generation") {
       if (!channel) {
-        return NextResponse.json({ error: "Csatorna nem található" }, { status: 404 });
+        return apiError("A csatorna nem található.", 404);
       }
 
       // Backfill any scene row that never got created — covers projects
       // generated before scene rows were seeded upfront.
       if (project.generated_script) {
         // srt_data may be large; fetch it only for this branch.
-        const { data: srtRow } = await supabaseAdmin
+        const { data: srtRow, error: srtError } = await supabaseAdmin
           .from("video_projects")
           .select("srt_data")
           .eq("id", projectId)
           .single();
+        if (srtError) throw srtError;
         const srtData = srtRow?.srt_data as unknown as string;
         if (srtData) {
           const sentencesPerImage = channel.sentences_per_image || 2;
           const scenes = segmentSrtIntoScenes(srtData, sentencesPerImage);
-          const { data: existingRows } = await supabaseAdmin
+          const { data: existingRows, error: existingError } = await supabaseAdmin
             .from("video_scenes")
             .select("scene_order")
             .eq("project_id", projectId);
+          if (existingError) throw existingError;
           const existingOrders = new Set((existingRows || []).map((r) => r.scene_order));
           const missingRows = scenes
             .map((scene, i) => ({ scene, i }))
@@ -122,16 +128,20 @@ export async function POST(
               video_url: null,
             }));
           for (let i = 0; i < missingRows.length; i += 200) {
-            await supabaseAdmin.from("video_scenes").insert(missingRows.slice(i, i + 200));
+            const { error: insertError } = await supabaseAdmin
+              .from("video_scenes")
+              .insert(missingRows.slice(i, i + 200));
+            if (insertError) throw insertError;
           }
         }
       }
 
       const videoOpts = normalizeVideoOptions(opts, channel.video_generation_defaults);
-      await supabaseAdmin
+      const { error: statusError } = await supabaseAdmin
         .from("video_projects")
         .update({ status: "Image_Generation", updated_at: new Date().toISOString() })
         .eq("id", projectId);
+      if (statusError) throw statusError;
       await inngest.send({
         name: "video/regenerate-media",
         data: {
@@ -150,9 +160,9 @@ export async function POST(
         },
       });
     } else {
-      return NextResponse.json(
-        { error: `Folytatás nem támogatott ebből az állapotból: ${project.status}` },
-        { status: 400 }
+      return apiError(
+        "A projekt jelenlegi állapotából nem lehet folytatni a generálást. Frissítsd az oldalt.",
+        409
       );
     }
 
@@ -166,8 +176,9 @@ export async function POST(
     });
 
     return NextResponse.json({ success: true, resumedFromStatus: project.status });
-  } catch (err: any) {
-    console.error("[api/projects/resume]", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return routeError(err, "api/projects/[projectId]/resume POST", {
+      fallback: "Nem sikerült folytatni a generálást.",
+    });
   }
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiError, routeError } from "@/lib/api-response";
 import { supabaseAdmin } from "@/lib/supabase";
 import { inngest } from "@/lib/inngest/client";
 import { appendGenerationLog } from "@/lib/generation-log";
@@ -19,7 +20,7 @@ export async function POST(
 
     const { projectId } = await params;
     if (!(await assertProjectOwned(projectId, auth.user.id))) {
-      return forbidden("Project not found or not owned");
+      return forbidden("A projekt nem található, vagy nincs hozzáférésed.");
     }
 
     const { data: project, error } = await supabaseAdmin
@@ -28,14 +29,19 @@ export async function POST(
       .eq("id", projectId)
       .single();
 
-    if (error || !project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    if (error && error.code !== "PGRST116") {
+      return routeError(error, "api/projects/[projectId]/script/regenerate POST", {
+        fallback: "Nem sikerült betölteni a projektet.",
+      });
+    }
+    if (!project) {
+      return apiError("A projekt nem található.", 404);
     }
 
     if (project.status !== "Script_Review" && project.status !== "Failed") {
-      return NextResponse.json(
-        { error: `Cannot regenerate script from status ${project.status}` },
-        { status: 400 }
+      return apiError(
+        "A forgatókönyv a projekt jelenlegi állapotában nem generálható újra. Frissítsd az oldalt.",
+        409
       );
     }
 
@@ -55,7 +61,9 @@ export async function POST(
     });
 
     return NextResponse.json({ success: true });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return routeError(err, "api/projects/[projectId]/script/regenerate POST", {
+      fallback: "Nem sikerült újraindítani a forgatókönyv generálását.",
+    });
   }
 }

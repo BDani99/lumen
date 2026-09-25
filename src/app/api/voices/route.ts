@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { AI33Client, ai33UserMessage, type AI33VoiceProvider } from "@/lib/ai33";
+import { AI33Client, type AI33VoiceProvider } from "@/lib/ai33";
+import { ai33NotConfigured, ai33RouteError } from "@/lib/ai33-response";
+import { apiError } from "@/lib/api-response";
 import { requireUserApi } from "@/lib/auth";
 
 const ALLOWED_PROVIDERS = new Set<AI33VoiceProvider>([
@@ -17,18 +19,10 @@ export async function GET(req: Request) {
     const provider = searchParams.get("provider") as AI33VoiceProvider | null;
 
     if (!provider || !ALLOWED_PROVIDERS.has(provider)) {
-      return NextResponse.json(
-        { error: "Missing or invalid provider. Use elevenlabs, minimax, or fishaudio." },
-        { status: 400 }
-      );
+      return apiError("Hiányzó vagy érvénytelen hangszolgáltató.", 400);
     }
 
-    if (!process.env.AI33_API_KEY) {
-      return NextResponse.json(
-        { error: "AI33_API_KEY is not configured" },
-        { status: 500 }
-      );
-    }
+    if (!process.env.AI33_API_KEY) return ai33NotConfigured("api/voices GET");
 
     const page = Math.max(1, Number(searchParams.get("page") || 1));
     const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("page_size") || searchParams.get("limit") || 30)));
@@ -54,8 +48,9 @@ export async function GET(req: Request) {
       voices: result.voices,
       pagination: result.pagination,
     });
-  } catch (error: any) {
-    console.error("[api/voices]", error);
-    return NextResponse.json({ error: ai33UserMessage(error) }, { status: 502 });
+  } catch (err) {
+    return ai33RouteError(err, "api/voices GET", {
+      fallback: "Nem sikerült betölteni a hangokat.",
+    });
   }
 }

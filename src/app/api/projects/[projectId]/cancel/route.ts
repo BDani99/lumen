@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiError, routeError } from "@/lib/api-response";
 import { supabaseAdmin } from "@/lib/supabase";
 import { inngest } from "@/lib/inngest/client";
 import { appendGenerationLog } from "@/lib/generation-log";
@@ -21,7 +22,7 @@ export async function POST(
 
     const { projectId } = await params;
     if (!(await assertProjectOwned(projectId, auth.user.id))) {
-      return forbidden("Project not found or not owned");
+      return forbidden("A projekt nem található, vagy nincs hozzáférésed.");
     }
 
     const { data: project, error } = await supabaseAdmin
@@ -30,14 +31,20 @@ export async function POST(
       .eq("id", projectId)
       .single();
 
-    if (error || !project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    if (error && error.code !== "PGRST116") {
+      return routeError(error, "api/projects/[projectId]/cancel POST", {
+        fallback: "Nem sikerült betölteni a projektet.",
+      });
+    }
+    if (!project) {
+      return apiError("A projekt nem található.", 404);
     }
 
     if (TERMINAL.has(project.status)) {
+      // Keep the `alreadyTerminal` flag of the original response shape.
       return NextResponse.json(
-        { error: `Cannot cancel from status ${project.status}`, alreadyTerminal: true },
-        { status: 400 }
+        { error: "A generálás már befejeződött vagy le lett állítva.", alreadyTerminal: true },
+        { status: 409 }
       );
     }
 
@@ -46,7 +53,7 @@ export async function POST(
         ? (project.timeline_data as Record<string, unknown>)
         : {};
 
-    await supabaseAdmin
+    const { error: updateError } = await supabaseAdmin
       .from("video_projects")
       .update({
         status: "Cancelled",
@@ -58,6 +65,7 @@ export async function POST(
         },
       })
       .eq("id", projectId);
+    if (updateError) throw updateError;
 
     await appendGenerationLog(projectId, {
       level: "warn",
@@ -72,7 +80,9 @@ export async function POST(
     });
 
     return NextResponse.json({ success: true, status: "Cancelled" });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return routeError(err, "api/projects/[projectId]/cancel POST", {
+      fallback: "Nem sikerült leállítani a generálást.",
+    });
   }
 }

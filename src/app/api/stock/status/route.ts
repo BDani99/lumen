@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { routeError } from "@/lib/api-response";
 import { requireUserApi } from "@/lib/auth";
 import { configuredStockProviders } from "@/lib/stock/search";
 import { STOCK_PROVIDER_ENV } from "@/lib/stock/types";
@@ -17,8 +18,7 @@ export async function GET() {
       configured: configuredStockProviders(),
       envVars: STOCK_PROVIDER_ENV,
     });
-  } catch (error: any) {
-    console.error("[api/stock/status]", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (err) {
+    return routeError(err, "api/stock/status");
   }
 }

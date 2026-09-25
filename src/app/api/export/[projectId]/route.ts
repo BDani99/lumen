@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { apiError, routeError } from "@/lib/api-response";
 import {
   buildVisualTimeline,
   type MotionClipsByScene,
@@ -17,7 +18,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ projectI
 
     const { projectId } = await params;
     if (!(await assertProjectOwned(projectId, auth.user.id))) {
-      return forbidden("Project not found or not owned");
+      return forbidden("A projekt nem található vagy nem a tiéd.");
     }
 
     const { data: project, error } = await supabaseAdmin
@@ -26,8 +27,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ projectI
       .eq("id", projectId)
       .single();
 
-    if (error || !project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    if (error) throw error;
+    if (!project) {
+      return apiError("A projekt nem található.", 404, { code: "not_found" });
     }
 
     const scenes = project.video_scenes.sort((a: any, b: any) => a.scene_order - b.scene_order);
@@ -305,8 +307,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ projectI
       skippedScenes,
     });
 
-  } catch (e: any) {
-    console.error("[api/export]", e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (err) {
+    return routeError(err, "api/export", { fallback: "Az exportálás nem sikerült." });
   }
 }

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { apiError, routeError } from "@/lib/api-response";
+import { isOpenRouterCreditsError, isRateLimitError } from "@/lib/inngest/generate-scene";
 import { supabaseAdmin } from "@/lib/supabase";
 import { openai, openrouter } from "@/lib/openai";
 import { cropTo16x9 } from "@/lib/image-processing";
@@ -24,11 +26,12 @@ function pickAllowedSceneUpdate(update: Record<string, unknown>): Record<string,
 }
 
 async function requireSceneOwned(sceneId: string, userId: string) {
-  const { data: scene } = await supabaseAdmin
+  const { data: scene, error } = await supabaseAdmin
     .from("video_scenes")
     .select("*")
     .eq("id", sceneId)
     .maybeSingle();
+  if (error) throw error;
   if (!scene?.project_id) return null;
   if (!(await assertProjectOwned(scene.project_id, userId))) return null;
   return scene;
@@ -47,31 +50,37 @@ export async function POST(req: Request) {
     });
     if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds);
 
-    const { sceneId, prompt } = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return apiError("Érvénytelen kérés.", 400);
+    }
+    const { sceneId, prompt } = body;
 
-    if (!sceneId || !prompt) {
-      return NextResponse.json({ error: "Missing sceneId or prompt" }, { status: 400 });
+    if (typeof sceneId !== "string" || !sceneId || typeof prompt !== "string" || !prompt.trim()) {
+      return apiError("Hiányzik a jelenet vagy a képleírás (prompt).", 400);
     }
 
     const scene = await requireSceneOwned(sceneId, auth.user.id);
     if (!scene) {
-      return forbidden("Scene not found or not owned");
+      return forbidden("A jelenet nem található, vagy nincs hozzáférésed.");
     }
 
     let rawModel = "gpt-image-2 low";
     if (scene.project_id) {
-      const { data: project } = await supabaseAdmin
+      const { data: project, error: projectError } = await supabaseAdmin
         .from("video_projects")
         .select("channel_id")
         .eq("id", scene.project_id)
         .single();
+      if (projectError) throw projectError;
 
       if (project?.channel_id) {
-        const { data: channel } = await supabaseAdmin
+        const { data: channel, error: channelError } = await supabaseAdmin
           .from("channels")
           .select("image_model")
           .eq("id", project.channel_id)
           .single();
+        if (channelError) throw channelError;
 
         if (channel?.image_model) {
           rawModel = channel.image_model;
@@ -117,33 +126,56 @@ export async function POST(req: Request) {
       const generatedUrl = imgResponse.data?.[0]?.url || "";
       const b64Json = (imgResponse.data?.[0] as any)?.b64_json || "";
 
-      if (generatedUrl || b64Json) {
-        let buffer: Buffer;
-        if (b64Json) {
-          buffer = Buffer.from(b64Json, "base64");
-        } else {
-          const imgRes = await fetch(generatedUrl);
-          const arrayBuffer = await imgRes.arrayBuffer();
-          buffer = Buffer.from(arrayBuffer);
-        }
-
-        buffer = await cropTo16x9(buffer);
-
-        if (!isR2Configured()) {
-          throw new Error("R2 is not configured — scene images require R2_* env");
-        }
-        const order = Number(scene.scene_order) || 0;
-        imageUrl = await uploadImageToR2({
-          key: sceneImageKey(scene.project_id, order),
-          body: buffer,
+      if (!generatedUrl && !b64Json) {
+        console.error("[api/scenes POST] provider returned no image", imgResponse);
+        return apiError("Az AI szolgáltatás nem adott vissza képet. Próbáld újra.", 502, {
+          code: "upstream_empty",
         });
       }
-    } catch (e: any) {
-      console.error("Image gen error:", e);
-      return NextResponse.json(
-        { error: "Failed to generate image: " + (e.message || JSON.stringify(e)) },
-        { status: 500 }
-      );
+
+      let buffer: Buffer;
+      if (b64Json) {
+        buffer = Buffer.from(b64Json, "base64");
+      } else {
+        const imgRes = await fetch(generatedUrl);
+        const arrayBuffer = await imgRes.arrayBuffer();
+        buffer = Buffer.from(arrayBuffer);
+      }
+
+      buffer = await cropTo16x9(buffer);
+
+      if (!isR2Configured()) {
+        console.error("[api/scenes POST] R2 is not configured (R2_* env missing)");
+        return apiError(
+          "A médiatárhely nincs beállítva, ezért a kép nem menthető. Jelezd az üzemeltetőnek.",
+          503,
+          { code: "config" }
+        );
+      }
+      const order = Number(scene.scene_order) || 0;
+      imageUrl = await uploadImageToR2({
+        key: sceneImageKey(scene.project_id, order),
+        body: buffer,
+      });
+    } catch (e) {
+      // Never echo the provider's message — map the known cases, log the rest.
+      if (isOpenRouterCreditsError(e)) {
+        console.error("[api/scenes POST] OpenRouter credits exhausted", e);
+        return apiError("Az AI szolgáltatás egyenlege elfogyott. Jelezd az üzemeltetőnek.", 503, {
+          code: "ai_credits",
+        });
+      }
+      if (isRateLimitError(e)) {
+        console.error("[api/scenes POST] provider rate limit", e);
+        return apiError(
+          "Az AI szolgáltatás jelenleg túlterhelt. Próbáld újra egy perc múlva.",
+          429,
+          { code: "rate_limited" }
+        );
+      }
+      return routeError(e, "api/scenes POST (image generation)", {
+        fallback: "Nem sikerült képet generálni ehhez a jelenethez.",
+      });
     }
 
     const { data: updatedScene, error: updateError } = await supabaseAdmin
@@ -157,13 +189,16 @@ export async function POST(req: Request) {
       .single();
 
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+      return routeError(updateError, "api/scenes POST (db update)", {
+        fallback: "A kép elkészült, de nem sikerült elmenteni a jelenethez.",
+      });
     }
 
     return NextResponse.json({ success: true, scene: updatedScene });
-  } catch (err: any) {
-    console.error("[api/scenes POST]", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return routeError(err, "api/scenes POST", {
+      fallback: "Nem sikerült képet generálni ehhez a jelenethez.",
+    });
   }
 }
 
@@ -172,20 +207,30 @@ export async function PATCH(req: Request) {
     const auth = await requireUserApi();
     if (auth.error) return auth.error;
 
-    const { sceneId, update } = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return apiError("Érvénytelen kérés.", 400);
+    }
+    const { sceneId, update } = body;
 
-    if (!sceneId || !update) {
-      return NextResponse.json({ error: "Missing sceneId or update data" }, { status: 400 });
+    if (
+      typeof sceneId !== "string" ||
+      !sceneId ||
+      !update ||
+      typeof update !== "object" ||
+      Array.isArray(update)
+    ) {
+      return apiError("Hiányzik a jelenet vagy a módosítandó adat.", 400);
     }
 
     const scene = await requireSceneOwned(sceneId, auth.user.id);
     if (!scene) {
-      return forbidden("Scene not found or not owned");
+      return forbidden("A jelenet nem található, vagy nincs hozzáférésed.");
     }
 
     const safeUpdate = pickAllowedSceneUpdate(update);
     if (Object.keys(safeUpdate).length === 0) {
-      return NextResponse.json({ error: "No updatable fields in update data" }, { status: 400 });
+      return apiError("A kérés nem tartalmaz módosítható mezőt.", 400);
     }
 
     const { data: updatedScene, error } = await supabaseAdmin
@@ -196,12 +241,15 @@ export async function PATCH(req: Request) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: "Update failed: " + error.message }, { status: 500 });
+      return routeError(error, "api/scenes PATCH", {
+        fallback: "Nem sikerült menteni a jelenet módosítását.",
+      });
     }
 
     return NextResponse.json(updatedScene);
-  } catch (err: any) {
-    console.error("[api/scenes PATCH]", err);
-    return NextResponse.json({ error: err?.message || "Internal server error" }, { status: 500 });
+  } catch (err) {
+    return routeError(err, "api/scenes PATCH", {
+      fallback: "Nem sikerült menteni a jelenet módosítását.",
+    });
   }
 }

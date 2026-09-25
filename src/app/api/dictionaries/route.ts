@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { AI33Client, ai33UserMessage } from "@/lib/ai33";
+import { AI33Client } from "@/lib/ai33";
+import { ai33NotConfigured, ai33RouteError } from "@/lib/ai33-response";
+import { apiError, routeError } from "@/lib/api-response";
 import { requireUserApi } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 
@@ -14,17 +16,13 @@ export async function GET() {
     const auth = await requireUserApi();
     if (auth.error) return auth.error;
 
-    if (!process.env.AI33_API_KEY) {
-      return NextResponse.json({ error: "AI33_API_KEY is not configured" }, { status: 500 });
-    }
+    if (!process.env.AI33_API_KEY) return ai33NotConfigured("api/dictionaries GET");
 
     const { data: owned, error: ownedError } = await supabaseAdmin
       .from("dictionary_owners")
       .select("dictionary_id")
       .eq("user_id", auth.user.id);
-    if (ownedError) {
-      return NextResponse.json({ error: ownedError.message }, { status: 500 });
-    }
+    if (ownedError) throw ownedError;
     const ownedIds = new Set((owned || []).map((row) => row.dictionary_id));
     if (ownedIds.size === 0) {
       return NextResponse.json({ dictionaries: [] });
@@ -35,9 +33,10 @@ export async function GET() {
     return NextResponse.json({
       dictionaries: dictionaries.filter((d) => ownedIds.has(d.id)),
     });
-  } catch (error: any) {
-    console.error("[api/dictionaries GET]", error);
-    return NextResponse.json({ error: ai33UserMessage(error) }, { status: 502 });
+  } catch (err) {
+    return ai33RouteError(err, "api/dictionaries GET", {
+      fallback: "Nem sikerült betölteni a szótárakat.",
+    });
   }
 }
 
@@ -46,18 +45,19 @@ export async function POST(req: Request) {
     const auth = await requireUserApi();
     if (auth.error) return auth.error;
 
-    if (!process.env.AI33_API_KEY) {
-      return NextResponse.json({ error: "AI33_API_KEY is not configured" }, { status: 500 });
-    }
+    if (!process.env.AI33_API_KEY) return ai33NotConfigured("api/dictionaries POST");
 
-    const body = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return apiError("Érvénytelen kérés.", 400);
+    }
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const rules = Array.isArray(body.rules) ? body.rules : [];
     if (!name) {
-      return NextResponse.json({ error: "Adj meg egy nevet a szótárnak." }, { status: 400 });
+      return apiError("Adj meg egy nevet a szótárnak.", 400);
     }
     if (rules.length === 0) {
-      return NextResponse.json({ error: "Legalább egy szabály szükséges." }, { status: 400 });
+      return apiError("Legalább egy szabály szükséges.", 400);
     }
 
     const ai33 = new AI33Client();
@@ -69,13 +69,15 @@ export async function POST(req: Request) {
     if (ownerError) {
       // Don't leave an AI33-side dictionary that nobody in Lumen can manage.
       await ai33.deleteDictionary(dictionary.id).catch(() => {});
-      console.error("[api/dictionaries POST] owner insert failed, rolled back", ownerError);
-      return NextResponse.json({ error: "Létrehozás sikertelen (tulajdonos-hozzárendelés)." }, { status: 500 });
+      return routeError(ownerError, "api/dictionaries POST (owner insert, rolled back)", {
+        fallback: "Nem sikerült létrehozni a szótárat. Próbáld újra.",
+      });
     }
 
     return NextResponse.json({ dictionary });
-  } catch (error: any) {
-    console.error("[api/dictionaries POST]", error);
-    return NextResponse.json({ error: ai33UserMessage(error) }, { status: 502 });
+  } catch (err) {
+    return ai33RouteError(err, "api/dictionaries POST", {
+      fallback: "Nem sikerült létrehozni a szótárat.",
+    });
   }
 }

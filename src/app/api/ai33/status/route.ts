@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { AI33Client, ai33UserMessage } from "@/lib/ai33";
+import { AI33Client } from "@/lib/ai33";
+import { ai33NotConfigured, ai33RouteError } from "@/lib/ai33-response";
 import { requireUserApi } from "@/lib/auth";
 
 /**
@@ -13,9 +14,7 @@ export async function GET() {
     const auth = await requireUserApi();
     if (auth.error) return auth.error;
 
-    if (!process.env.AI33_API_KEY) {
-      return NextResponse.json({ error: "AI33_API_KEY is not configured" }, { status: 500 });
-    }
+    if (!process.env.AI33_API_KEY) return ai33NotConfigured("api/ai33/status GET");
 
     const ai33 = new AI33Client();
     const [credits, health] = await Promise.all([
@@ -30,8 +29,9 @@ export async function GET() {
     ]);
 
     return NextResponse.json({ available: typeof credits === "number" && credits > 0, health });
-  } catch (error: any) {
-    console.error("[api/ai33/status]", error);
-    return NextResponse.json({ error: ai33UserMessage(error) }, { status: 502 });
+  } catch (err) {
+    return ai33RouteError(err, "api/ai33/status GET", {
+      fallback: "Nem sikerült lekérdezni a hangszolgáltatás állapotát.",
+    });
   }
 }

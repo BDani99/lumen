@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiError, routeError } from "@/lib/api-response";
 import { supabaseAdmin } from "@/lib/supabase";
 import { assertProjectOwned, forbidden, requireUserApi } from "@/lib/auth";
 import { buildProTimeline } from "@/lib/pro/timeline";
@@ -20,7 +21,7 @@ export async function GET(
 
     const { projectId } = await params;
     if (!(await assertProjectOwned(projectId, auth.user.id))) {
-      return forbidden("Project not found or not owned");
+      return forbidden("A projekt nem található, vagy nincs hozzáférésed.");
     }
 
     const { data: project, error } = await supabaseAdmin
@@ -29,14 +30,16 @@ export async function GET(
       .eq("id", projectId)
       .single();
 
-    if (error || !project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    if (error && error.code !== "PGRST116") {
+      return routeError(error, "api/pro/export GET", {
+        fallback: "Nem sikerült betölteni a projektet az exporthoz.",
+      });
+    }
+    if (!project) {
+      return apiError("A projekt nem található.", 404);
     }
     if (project.pipeline !== "pro") {
-      return NextResponse.json(
-        { error: "Ez nem Pro projekt — használd a normál exportot." },
-        { status: 400 }
-      );
+      return apiError("Ez nem Pro projekt — használd a normál exportot.", 400);
     }
 
     const rows: any[] = Array.isArray(project.pro_shots) ? project.pro_shots : [];
@@ -90,8 +93,9 @@ export async function GET(
       missingShots: timeline.missingShots,
       totalDurationSec: timeline.totalDurationSec,
     });
-  } catch (err: any) {
-    console.error("[api/pro/export]", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return routeError(err, "api/pro/export GET", {
+      fallback: "Nem sikerült elkészíteni a Pro exportot.",
+    });
   }
 }

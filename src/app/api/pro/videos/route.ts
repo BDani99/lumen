@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiError, routeError } from "@/lib/api-response";
 import { supabaseAdmin } from "@/lib/supabase";
 import { inngest } from "@/lib/inngest/client";
 import { appendGenerationLog } from "@/lib/generation-log";
@@ -27,21 +28,24 @@ export async function POST(req: Request) {
     });
     if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds);
 
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return apiError("Érvénytelen kérés.", 400);
+    }
     const { title, channelId, durationMinutes, customScript, proSettings } = body;
 
-    if (!title || !channelId) {
-      return NextResponse.json({ error: "Missing title or channelId" }, { status: 400 });
+    if (typeof title !== "string" || !title || typeof channelId !== "string" || !channelId) {
+      return apiError("Add meg a videó címét és válassz csatornát.", 400);
     }
     if (!(await assertChannelOwned(channelId, auth.user.id))) {
-      return forbidden("Channel not found or not owned");
+      return forbidden("A csatorna nem található, vagy nincs hozzáférésed.");
     }
 
     const trimmedScript = typeof customScript === "string" ? customScript.trim() : "";
     if (trimmedScript.length > MAX_SCRIPT_CHARS) {
-      return NextResponse.json(
-        { error: `Script too long (max ${MAX_SCRIPT_CHARS} characters)` },
-        { status: 400 }
+      return apiError(
+        `A forgatókönyv túl hosszú (legfeljebb ${MAX_SCRIPT_CHARS.toLocaleString("hu-HU")} karakter lehet).`,
+        400
       );
     }
 
@@ -66,7 +70,9 @@ export async function POST(req: Request) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return routeError(error, "api/pro/videos POST", {
+        fallback: "Nem sikerült létrehozni a Pro projektet.",
+      });
     }
 
     await appendGenerationLog(project.id, {
@@ -84,8 +90,9 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ success: true, project });
-  } catch (err: any) {
-    console.error("[api/pro/videos]", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return routeError(err, "api/pro/videos POST", {
+      fallback: "Nem sikerült elindítani a Pro videó generálását.",
+    });
   }
 }

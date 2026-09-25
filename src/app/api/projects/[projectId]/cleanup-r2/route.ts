@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { routeError } from "@/lib/api-response";
 import { supabaseAdmin } from "@/lib/supabase";
 import {
   assertProjectOwned,
@@ -23,17 +24,19 @@ export async function POST(
 
     const { projectId } = await params;
     if (!(await assertProjectOwned(projectId, auth.user.id))) {
-      return forbidden("Project not found or not owned");
+      return forbidden("A projekt nem található, vagy nincs hozzáférésed.");
     }
 
-    await supabaseAdmin
+    const { error } = await supabaseAdmin
       .from("video_projects")
       .update({ exported_at: new Date().toISOString() })
       .eq("id", projectId);
+    if (error) throw error;
 
     return NextResponse.json({ success: true });
-  } catch (err: any) {
-    console.error("[api/projects/cleanup-r2]", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return routeError(err, "api/projects/[projectId]/cleanup-r2 POST", {
+      fallback: "Nem sikerült exportáltnak jelölni a projektet.",
+    });
   }
 }

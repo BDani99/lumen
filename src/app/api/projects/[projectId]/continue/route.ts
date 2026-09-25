@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiError, routeError } from "@/lib/api-response";
 import { supabaseAdmin } from "@/lib/supabase";
 import { inngest } from "@/lib/inngest/client";
 import { appendGenerationLog } from "@/lib/generation-log";
@@ -21,10 +22,13 @@ export async function POST(
 
     const { projectId } = await params;
     if (!(await assertProjectOwned(projectId, auth.user.id))) {
-      return forbidden("Project not found or not owned");
+      return forbidden("A projekt nem található, vagy nincs hozzáférésed.");
     }
 
-    const body = await req.json().catch(() => ({}));
+    // The body is optional here (plain "approve" sends none), but when present it must be an object.
+    const raw = await req.json().catch(() => ({}));
+    const body: Record<string, unknown> =
+      raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
     const script =
       typeof body.script === "string" ? body.script.trim() : undefined;
 
@@ -34,33 +38,39 @@ export async function POST(
       .eq("id", projectId)
       .single();
 
-    if (error || !project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    if (error && error.code !== "PGRST116") {
+      return routeError(error, "api/projects/[projectId]/continue POST", {
+        fallback: "Nem sikerült betölteni a projektet.",
+      });
+    }
+    if (!project) {
+      return apiError("A projekt nem található.", 404);
     }
 
     if (project.status !== "Script_Review" && project.status !== "Script_Ready") {
-      return NextResponse.json(
-        { error: `Cannot continue from status ${project.status}` },
-        { status: 400 }
+      return apiError(
+        "A projekt jelenlegi állapotából nem lehet folytatni a generálást. Frissítsd az oldalt.",
+        409
       );
     }
 
     if (script !== undefined) {
       if (script.length > MAX_SCRIPT_CHARS) {
-        return NextResponse.json(
-          { error: `Script too long (max ${MAX_SCRIPT_CHARS})` },
-          { status: 400 }
+        return apiError(
+          `A forgatókönyv túl hosszú (legfeljebb ${MAX_SCRIPT_CHARS.toLocaleString("hu-HU")} karakter lehet).`,
+          400
         );
       }
       if (!script) {
-        return NextResponse.json({ error: "Script cannot be empty" }, { status: 400 });
+        return apiError("A forgatókönyv nem lehet üres.", 400);
       }
-      await supabaseAdmin
+      const { error: updateError } = await supabaseAdmin
         .from("video_projects")
         .update({ generated_script: script })
         .eq("id", projectId);
+      if (updateError) throw updateError;
     } else if (!project.generated_script?.trim()) {
-      return NextResponse.json({ error: "No script on project" }, { status: 400 });
+      return apiError("A projekthez még nincs forgatókönyv.", 400);
     }
 
     await appendGenerationLog(projectId, {
@@ -77,7 +87,9 @@ export async function POST(
     });
 
     return NextResponse.json({ success: true });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return routeError(err, "api/projects/[projectId]/continue POST", {
+      fallback: "Nem sikerült folytatni a videó generálását.",
+    });
   }
 }

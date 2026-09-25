@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiError, routeError } from "@/lib/api-response";
 import { supabaseAdmin } from "@/lib/supabase";
 import {
   assertProjectOwned,
@@ -17,11 +18,11 @@ export async function DELETE(
 
     const { projectId } = await params;
     if (!projectId) {
-      return NextResponse.json({ error: "Missing projectId" }, { status: 400 });
+      return apiError("Hiányzó projektazonosító.", 400);
     }
 
     if (!(await assertProjectOwned(projectId, auth.user.id))) {
-      return forbidden("Project not found or not owned");
+      return forbidden("A projekt nem található, vagy nincs hozzáférésed.");
     }
 
     // Prefer R2 (images + videos). Legacy Supabase storage cleanup if anything left.
@@ -46,7 +47,11 @@ export async function DELETE(
       console.error("Supabase storage cleanup on project delete:", e);
     }
 
-    await supabaseAdmin.from("video_scenes").delete().eq("project_id", projectId);
+    const { error: scenesError } = await supabaseAdmin
+      .from("video_scenes")
+      .delete()
+      .eq("project_id", projectId);
+    if (scenesError) throw scenesError;
 
     const { error: deleteError } = await supabaseAdmin
       .from("video_projects")
@@ -58,11 +63,9 @@ export async function DELETE(
     }
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    console.error("Delete project error:", error);
-    return NextResponse.json(
-      { error: error.message || "Hiba történt a törlés során" },
-      { status: 500 }
-    );
+  } catch (error) {
+    return routeError(error, "api/videos/[projectId] DELETE", {
+      fallback: "Nem sikerült törölni a projektet.",
+    });
   }
 }

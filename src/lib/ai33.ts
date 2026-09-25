@@ -55,16 +55,34 @@ export function clampTtsSpeed(speed: number): number {
 
 /** Turn a raw AI33Client error into a clear, actionable Hungarian message for API responses. */
 export function ai33UserMessage(err: unknown): string {
-  const msg = err instanceof Error ? err.message : String(err);
-  // Already a human-readable, health-check-enriched message from AI33Client — pass through.
-  if (/\(AI33\)\./.test(msg)) return msg;
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  // Health-check-enriched message from AI33Client. Only the Hungarian part is passed
+  // through — the raw upstream error is appended in parentheses and must not leak.
+  const enriched = msg.match(
+    /^(?:ElevenLabs|MiniMax|Fish Audio) jelenleg (?:túlterhelt|akadozik) \(AI33\)\. Próbáld újra pár perc múlva\./
+  );
+  if (enriched) return enriched[0];
   if (/AI33 request timed out/i.test(msg)) {
     return 'A hangszolgáltatás nem válaszolt időben (AI33). Próbáld újra.';
   }
-  if (/AI33 API error/i.test(msg)) {
-    return 'A hangszolgáltatás átmenetileg nem elérhető (AI33). Próbáld újra pár másodperc múlva.';
+  if (isAi33ServerBusy(0, msg) && !/AI33 API error \((?:401|402|403)\)/.test(msg)) {
+    return 'A hangszolgáltatás átmenetileg foglalt (AI33). Várj pár másodpercet, majd próbáld újra.';
   }
-  return msg;
+  const apiErr = msg.match(/AI33 API error \((\d{3})\)/);
+  if (apiErr) {
+    switch (Number(apiErr[1])) {
+      case 401:
+      case 402:
+      case 403:
+        return 'A hangszolgáltatás nincs megfelelően beállítva, vagy elfogyott a kerete. Értesítsd az üzemeltetőt.';
+      case 429:
+        return 'A hangszolgáltatás túl sok kérést kapott. Próbáld újra pár perc múlva.';
+      default:
+        return 'A hangszolgáltatás átmenetileg nem elérhető (AI33). Próbáld újra pár másodperc múlva.';
+    }
+  }
+  // Anything else (network failure, unexpected shape, …): never echo the raw text.
+  return 'A hangszolgáltatás hibát jelzett. Próbáld újra, és ha továbbra is fennáll, jelezd az üzemeltetőnek.';
 }
 
 /** Map ISO codes to Minimax `language_boost` enum names. */

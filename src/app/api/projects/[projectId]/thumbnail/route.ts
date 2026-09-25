@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { apiError, routeError } from "@/lib/api-response";
+import { isOpenRouterCreditsError, isRateLimitError } from "@/lib/inngest/generate-scene";
 import { supabaseAdmin } from "@/lib/supabase";
 import { openai, openrouter } from "@/lib/openai";
 import { cropTo16x9 } from "@/lib/image-processing";
@@ -23,7 +25,7 @@ export async function POST(
     const projectId = resolvedParams.projectId;
 
     if (!(await assertProjectOwned(projectId, auth.user.id))) {
-      return forbidden("Project not found or not owned");
+      return forbidden("A projekt nem található, vagy nincs hozzáférésed.");
     }
 
     const rateLimit = await checkRateLimit({
@@ -41,13 +43,18 @@ export async function POST(
       .eq("id", projectId)
       .single();
 
-    if (projectError || !project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    if (projectError && projectError.code !== "PGRST116") {
+      return routeError(projectError, "api/projects/[projectId]/thumbnail POST", {
+        fallback: "Nem sikerült betölteni a projektet.",
+      });
+    }
+    if (!project) {
+      return apiError("A projekt nem található.", 404);
     }
 
     const channel = project.channels;
     if (!channel?.thumbnail_prompt) {
-      return NextResponse.json({ error: "No thumbnail prompt configured for this channel." }, { status: 400 });
+      return apiError("A csatornához nincs borítókép-prompt beállítva.", 400);
     }
 
     // 2. Generate Image
@@ -94,7 +101,10 @@ export async function POST(
     let b64Json = (imgRes.data?.[0] as any)?.b64_json || "";
     
     if (!generatedUrl && !b64Json) {
-      return NextResponse.json({ error: "Failed to generate image from AI provider." }, { status: 500 });
+      console.error("[api/projects/[projectId]/thumbnail POST] provider returned no image", imgRes);
+      return apiError("Az AI szolgáltatás nem adott vissza képet. Próbáld újra.", 502, {
+        code: "upstream_empty",
+      });
     }
 
     // 3. Process and Upload to Supabase
@@ -110,9 +120,11 @@ export async function POST(
     buffer = await cropTo16x9(buffer);
 
     if (!isR2Configured()) {
-      return NextResponse.json(
-        { error: "R2 is not configured — thumbnails require R2_* env" },
-        { status: 500 }
+      console.error("[api/projects/[projectId]/thumbnail POST] R2 is not configured (R2_* env missing)");
+      return apiError(
+        "A médiatárhely nincs beállítva, ezért a borítókép nem menthető. Jelezd az üzemeltetőnek.",
+        503,
+        { code: "config" }
       );
     }
 
@@ -122,9 +134,10 @@ export async function POST(
         key: thumbnailImageKey(projectId),
         body: buffer,
       });
-    } catch (uploadError: any) {
-      console.error("Upload error:", uploadError);
-      return NextResponse.json({ error: "Failed to upload thumbnail." }, { status: 500 });
+    } catch (uploadError) {
+      return routeError(uploadError, "api/projects/[projectId]/thumbnail POST (R2 upload)", {
+        fallback: "Nem sikerült feltölteni a borítóképet.",
+      });
     }
 
     // 4. Update Database (keep history in timeline_data)
@@ -150,14 +163,31 @@ export async function POST(
       .eq("id", projectId);
 
     if (updateError) {
-      console.error("Update error:", updateError);
-      return NextResponse.json({ error: "Failed to update database." }, { status: 500 });
+      return routeError(updateError, "api/projects/[projectId]/thumbnail POST (db update)", {
+        fallback: "A borítókép elkészült, de nem sikerült elmenteni.",
+      });
     }
 
     return NextResponse.json({ success: true, thumbnail_url: newThumbnailUrl, timeline_data: updatedTimelineData });
 
-  } catch (error: any) {
-    console.error("Thumbnail regeneration error:", error);
-    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
+  } catch (error) {
+    // Never echo the provider's message — map the known cases, log the rest.
+    if (isOpenRouterCreditsError(error)) {
+      console.error("[api/projects/[projectId]/thumbnail POST] OpenRouter credits exhausted", error);
+      return apiError("Az AI szolgáltatás egyenlege elfogyott. Jelezd az üzemeltetőnek.", 503, {
+        code: "ai_credits",
+      });
+    }
+    if (isRateLimitError(error)) {
+      console.error("[api/projects/[projectId]/thumbnail POST] provider rate limit", error);
+      return apiError(
+        "Az AI szolgáltatás jelenleg túlterhelt. Próbáld újra egy perc múlva.",
+        429,
+        { code: "rate_limited" }
+      );
+    }
+    return routeError(error, "api/projects/[projectId]/thumbnail POST", {
+      fallback: "Nem sikerült elkészíteni a borítóképet.",
+    });
   }
 }

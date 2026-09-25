@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiError, routeError } from "@/lib/api-response";
 import { supabaseAdmin } from "@/lib/supabase";
 import {
   assertProjectOwned,
@@ -24,19 +25,24 @@ export async function POST(
 
     const { projectId } = await params;
     if (!(await assertProjectOwned(projectId, auth.user.id))) {
-      return forbidden("Project not found or not owned");
+      return forbidden("A projekt nem található, vagy nincs hozzáférésed.");
     }
 
     if (!isR2Configured()) {
-      return NextResponse.json({ error: "R2 nincs konfigurálva" }, { status: 400 });
+      return apiError(
+        "A médiatárhely nincs beállítva, ezért nem üríthető. Jelezd az üzemeltetőnek.",
+        503,
+        { code: "config" }
+      );
     }
 
     const deleted = await deleteR2Prefix(`projects/${projectId}/`);
 
-    const { data: scenes } = await supabaseAdmin
+    const { data: scenes, error: scenesError } = await supabaseAdmin
       .from("video_scenes")
       .select("id, video_url, image_url")
       .eq("project_id", projectId);
+    if (scenesError) throw scenesError;
 
     let flaggedVideos = 0;
     let flaggedImages = 0;
@@ -51,22 +57,28 @@ export async function POST(
         flaggedImages += 1;
       }
       if (Object.keys(patch).length) {
-        await supabaseAdmin.from("video_scenes").update(patch).eq("id", s.id);
+        const { error: patchError } = await supabaseAdmin
+          .from("video_scenes")
+          .update(patch)
+          .eq("id", s.id);
+        if (patchError) throw patchError;
       }
     }
 
-    const { data: project } = await supabaseAdmin
+    const { data: project, error: projectError } = await supabaseAdmin
       .from("video_projects")
       .select("id, thumbnail_url")
       .eq("id", projectId)
       .maybeSingle();
+    if (projectError) throw projectError;
 
     let clearedThumb = false;
     if (project?.thumbnail_url && project.thumbnail_url !== R2_DELETED_MARKER) {
-      await supabaseAdmin
+      const { error: thumbError } = await supabaseAdmin
         .from("video_projects")
         .update({ thumbnail_url: R2_DELETED_MARKER })
         .eq("id", projectId);
+      if (thumbError) throw thumbError;
       clearedThumb = true;
     }
 
@@ -84,8 +96,9 @@ export async function POST(
       flaggedImages,
       clearedThumb,
     });
-  } catch (err: any) {
-    console.error("[api/projects/clear-media]", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return routeError(err, "api/projects/[projectId]/clear-media POST", {
+      fallback: "Nem sikerült üríteni a projekt médiafájljait.",
+    });
   }
 }
