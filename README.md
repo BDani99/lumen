@@ -182,7 +182,8 @@ Forrás / részletek:
 3. Dashboard → Authentication → Providers: kapcsold be az **Email** providert.
 4. Fejlesztéshez ajánlott: Authentication beállításoknál kapcsold ki a **Confirm email**-t, különben regisztráció után email-megerősítés kell, mielőtt be lehetne lépni.
 5. Authentication → URL Configuration → Site URL: `http://localhost:3000` fejlesztéshez (+ a production Vercel domain, ha már van). A **Redirect URLs** listába vedd fel a `<domain>/auth/callback` címet is (localhost és production), különben a jelszó-visszaállító és megerősítő linkek nem működnek.
-6. Ha egy már működő, egyfelhasználós telepítésből nyitod meg az alkalmazást több felhasználó felé: a meglévő kiejtési szótárak tulajdonos nélkül maradnának (a TTS API oldalán nincs user mező) — futtasd le egyszer:
+6. Authentication → Emails → Templates: a **Confirm signup** és a **Reset password** sablon tartalmát cseréld a [`supabase/email-templates/`](supabase/email-templates) mappa fájljaira (tárgy: "Erősítsd meg az email címed", illetve "Jelszó visszaállítása"). A sablonok a linket a `/auth/confirm` végpontra irányítják `token_hash`-sel, így a megerősítés akkor is működik, ha a levelet másik böngészőben, másik eszközön vagy egy levelezőalkalmazás beépített nézetében nyitják meg. Az alapértelmezett sablon a `?code=` alapú (PKCE) utat használja, ami ilyenkor "a link érvénytelen" hibával áll meg, miközben az email már megerősítődött. A sablonok a **Site URL**-t használják (`{{ .SiteURL }}`), ezért az az alkalmazás címe legyen.
+7. Ha egy már működő, egyfelhasználós telepítésből nyitod meg az alkalmazást több felhasználó felé: a meglévő kiejtési szótárak tulajdonos nélkül maradnának (a TTS API oldalán nincs user mező) — futtasd le egyszer:
    ```powershell
    npx tsx --env-file=.env.local scripts/backfill-dictionary-owners.ts <a-te-supabase-user-uuid-od> --confirm
    ```

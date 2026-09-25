@@ -10,7 +10,7 @@ import {
 import { noticeForAuthFailure, noticeUrl, type NoticeCode } from "@/lib/notices";
 
 /** Reachable without a session. Auth callback/reset-request pages must be here or the flows would loop. */
-const PUBLIC_PREFIXES = ["/login", "/register", "/forgot-password", "/auth/callback"];
+const PUBLIC_PREFIXES = ["/login", "/register", "/forgot-password", "/auth/callback", "/auth/confirm"];
 /** Public, but a signed-in user has no business on them (bounced to "/"). */
 const GUEST_ONLY_PREFIXES = ["/login", "/register", "/forgot-password"];
 

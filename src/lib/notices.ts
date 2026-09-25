@@ -18,7 +18,11 @@ export const NOTICES = {
   config: { tone: "error", message: CONFIG_ERROR_MESSAGE },
   network: { tone: "error", message: NETWORK_ERROR_MESSAGE },
   service_unavailable: { tone: "error", message: SERVICE_UNAVAILABLE_MESSAGE },
-  link_invalid: { tone: "error", message: "A link érvénytelen vagy lejárt. Kérj egy újat." },
+  link_invalid: {
+    tone: "error",
+    message:
+      "A link már fel lett használva, vagy lejárt. Ha az email címedet már megerősítetted, egyszerűen jelentkezz be. Jelszó-visszaállításhoz kérj új linket.",
+  },
   registered: {
     tone: "success",
     message:
